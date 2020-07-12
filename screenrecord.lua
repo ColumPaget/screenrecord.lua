@@ -6,9 +6,12 @@ require("terminal")
 require("time")
 
 function tobool(str)
-str=string.lower(str)
+
+
+str=string.lower(strutil.trim(str))
 
 if strutil.strlen(str) < 1 then return false end
+
 if string.sub(str,1,1) =='y' then return true end
 if string.sub(str,1,1) =='n' then return false end
 if str=="true" then return true end
@@ -77,7 +80,7 @@ end
 function QarmaFormRun(form)
 local str, S
 
-str="qarma --forms " 
+str="qarma --forms --title='" .. form.title .."' "
 for i,config_item in ipairs(form.config)
 do
 	str=str..config_item.cmd_args.. " "
@@ -195,9 +198,10 @@ end
 
 
 
-function QarmaFormObjectCreate()
+function QarmaFormObjectCreate(dialogs, title)
 local form={}
 
+form.title=title
 form.config={}
 form.add=FormItemAdd
 form.addboolean=QarmaFormAddBoolean
@@ -226,6 +230,174 @@ return dialogs
 end
 
 
+function ZenityFormAddBoolean(form, name)
+form:add("boolean", name, "--add-combo='"..name.."' --combo-values='yes|no'")
+end
+
+function ZenityFormAddChoice(form, name, choices)
+form:add("choice", name, "--add-combo='"..name.."' --combo-values='"..choices.."'")
+end
+
+function ZenityFormAddEntry(form, name)
+form:add("entry", name, "--add-entry='"..name.."'")
+end
+
+
+function ZenityFormRun(form)
+local str, S
+
+str="zenity --forms --title='" .. form.title .. "' "
+for i,config_item in ipairs(form.config)
+do
+	str=str..config_item.cmd_args.. " "
+end
+
+print("FORM: "..str)
+S=stream.STREAM("cmd:"..str, "")
+str=S:readdoc()
+S:close()
+
+return FormParseOutput(form, str)
+end
+
+
+function ZenityYesNoDialog(text, flags)
+local S, str, pid
+
+str="cmd:zenity --question --text='"..text.."'"
+S=stream.STREAM(str)
+pid=S:getvalue("PeerPID")
+str=S:readdoc()
+S:close()
+
+str=process.waitStatus(tonumber(pid));
+
+if str=="exit:0" then return "yes" end
+return "no"
+end
+
+
+function ZenityInfoDialog(text)
+local S, str
+
+str="cmd:zenity --info --text='"..text.."'"
+S=stream.STREAM(str)
+str=S:readdoc()
+S:close()
+
+end
+
+
+function ZenityTextEntryDialog(text)
+local S, str
+
+str="cmd:zenity --entry --text='"..text.."'"
+S=stream.STREAM(str)
+str=S:readdoc()
+S:close()
+
+return str
+end
+
+
+function ZenityFileSelectionDialog(text)
+local S, str
+
+str="cmd:zenity --file-selection --text='"..text.."'"
+S=stream.STREAM(str)
+str=S:readdoc()
+S:close()
+
+return str
+end
+
+
+function ZenityCalendarDialog(text)
+local S, str
+
+str="cmd:zenity --calendar --text='"..text.."'"
+S=stream.STREAM(str)
+str=S:readdoc()
+S:close()
+
+return str
+end
+
+
+function ZenityMenuDialog(text, options)
+local S, str, toks, tok
+
+str="cmd:zenity --list --hide-header --text='"..text.."' "
+
+toks=strutil.TOKENIZER(options, "|")
+tok=toks:next()
+while tok ~= nil
+do
+str=str.. "'" .. tok .."' "
+tok=toks:next()
+end
+
+S=stream.STREAM(str)
+str=S:readdoc()
+S:close()
+
+return str
+end
+
+
+function ZenityLogDialogAddText(dialog, text)
+if text ~= nil then dialog.S:writeln(text.."\n") end
+dialog.S:flush()
+end
+
+
+function ZenityLogDialog(form, text)
+local S, str
+local dialog={}
+
+str="cmd:zenity --text-info --auto-scroll --title='"..text.."'"
+dialog.S=stream.STREAM(str)
+dialog.add=ZenityLogDialogAddText
+
+return dialog
+end
+
+
+
+
+function ZenityFormObjectCreate(dialogs, title)
+local form={}
+
+form.title=title
+form.config={}
+form.add=FormItemAdd
+form.addboolean=ZenityFormAddBoolean
+form.addchoice=ZenityFormAddChoice
+form.addentry=ZenityFormAddEntry
+form.run=ZenityFormRun
+
+return form
+end
+
+
+function ZenityObjectCreate()
+local dialogs={}
+
+dialogs.yesno=ZenityYesNoDialog
+dialogs.info=ZenityInfoDialog
+dialogs.entry=ZenityTextEntryDialog
+dialogs.fileselect=ZenityFileSelectionDialog
+dialogs.calendar=ZenityCalendarDialog
+dialogs.menu=ZenityMenuDialog
+dialogs.log=ZenityLogDialog
+--dialogs.progress=ZenityProgressDialog
+dialogs.form=ZenityFormObjectCreate
+
+return dialogs
+end
+
+
+
 
 function YadFormAddBoolean(form, name)
 form:add("boolean", name, "--field='"..name..":CHK' ''")
@@ -245,7 +417,7 @@ end
 function YadFormRun(form)
 local str, S, i, config_item
 
-str="yad --form "
+str="yad --form --title='" .. form.title .. "' "
 for i,config_item in ipairs(form.config)
 do
 	str=str..config_item.cmd_args.. " "
@@ -367,9 +539,10 @@ end
 
 
 
-function YadFormObjectCreate()
+function YadFormObjectCreate(dialogs, title)
 local form={}
 
+form.title=title
 form.config={}
 form.add=FormItemAdd
 form.addboolean=YadFormAddBoolean
@@ -529,9 +702,10 @@ end
 
 
 
-function TextConsoleFormObjectCreate(dialogs)
+function TextConsoleFormObjectCreate(dialogs, title)
 local form={}
 
+form.title=title
 form.stdio=dialogs.stdio
 form.term=dialogs.term
 form.config={}
@@ -568,8 +742,7 @@ end
 
 function DialogSelectDriver()
 
---if strutil.strlen(filesys.find("zenity", process.getenv("PATH"))) > 0 then return "zenity" end
---if strutil.strlen(filesys.find("xdialog", process.getenv("PATH"))) > 0  then return "xdialog" end
+if strutil.strlen(filesys.find("zenity", process.getenv("PATH"))) > 0 then return "zenity" end
 if strutil.strlen(filesys.find("qarma", process.getenv("PATH"))) > 0 then return "qarma" end
 if strutil.strlen(filesys.find("yad", process.getenv("PATH"))) > 0 then return "yad" end
 
@@ -587,6 +760,9 @@ driver=DialogSelectDriver()
 if driver == "qarma"
 then
 	dialog=QarmaObjectCreate()
+elseif driver == "zenity"
+then
+	dialog=ZenityObjectCreate()
 elseif driver == "yad"
 then
 	dialog=YadObjectCreate()
@@ -662,8 +838,7 @@ local str, S, toks, tok, device, config
 local dialog={}
 
 dialog=NewDialog()
-form=dialog:form()
-
+form=dialog:form("setup screen recording")
 
 str="none"
 for i,device in ipairs(devices)
@@ -683,7 +858,7 @@ form:addchoice("size", "1024x768|800x600|640x480", "(area of screen to capture)"
 form:addboolean("show capture region", "(draw outline of capture region on screen)")
 form:addboolean("noise reduction", "(if audio, apply noise filters)")
 form:addchoice("follow mouse", "no|edge|centered", "(capture region moves with mouse)")
-form:addentry("countdown", "(seconds of gracetime before recording)")
+--form:addentry("countdown", "(seconds of gracetime before recording)")
 
 config=form:run()
 
@@ -773,7 +948,7 @@ filesys.unlink("screencast.mp4")
 
 dialog=NewDialog()
 log=dialog:log("Close This Window To End Recording")
-cmdS=stream.STREAM("cmd:" .. str, "rw +stderr")
+cmdS=stream.STREAM("cmd:" .. str, "rw +stderr noshell")
 
 poll=stream.POLL_IO()
 poll:add(cmdS)
@@ -802,7 +977,7 @@ do
 	end
 end
 
-process.kill(cmdS:getvalue("PeerPID"))
+process.kill(tonumber(cmdS:getvalue("PeerPID")))
 cmdS:close()
 if log.term ~= nil then log.term:reset() end
 
