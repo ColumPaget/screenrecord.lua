@@ -87,7 +87,7 @@ do
 end
 
 S=stream.STREAM("cmd:"..str, "")
-str=S:readdoc()
+str=strutil.trim(S:readdoc())
 S:close()
 
 return FormParseOutput(form, str)
@@ -254,7 +254,7 @@ end
 
 print("FORM: "..str)
 S=stream.STREAM("cmd:"..str, "")
-str=S:readdoc()
+str=strutil.trim(S:readdoc())
 S:close()
 
 return FormParseOutput(form, str)
@@ -424,7 +424,7 @@ do
 end
 
 S=stream.STREAM("cmd:"..str, "")
-str=S:readdoc()
+str=strutil.trim(S:readdoc())
 S:close()
 
 return FormParseOutput(form, str)
@@ -832,6 +832,28 @@ return devices
 end
 
 
+function GetScreenResolution()
+local S
+local dim=""
+
+S=stream.STREAM("cmd:xdpyinfo");
+str=S:readln()
+while str ~= nil
+do
+	str=strutil.trim(str)	
+	toks=strutil.TOKENIZER(str, "\\S")
+	tok=toks:next()
+	if tok=="dimensions:"
+	then 
+		dim=toks:next()
+	end
+	str=S:readln()
+end
+S:close()
+
+return dim
+end
+
 
 function SetupDialog(devices)
 local str, S, toks, tok, device, config
@@ -854,7 +876,7 @@ end
 
 form:addchoice("audio", str, "(select audio input or 'none')")
 form:addchoice("fps", "1|2|5|10|15|25|30", "(video frames per second)")
-form:addchoice("size", "1024x768|800x600|640x480", "(area of screen to capture)")
+form:addchoice("size", GetScreenResolution().."|1024x768|800x600|640x480", "(area of screen to capture)")
 form:addboolean("show capture region", "(draw outline of capture region on screen)")
 form:addboolean("noise reduction", "(if audio, apply noise filters)")
 form:addchoice("follow mouse", "no|edge|centered", "(capture region moves with mouse)")
@@ -944,6 +966,7 @@ if config["follow mouse"] ~= "no" then follow_mouse="-follow_mouse "..config["fo
 
 str="ffmpeg -nostats -s " .. config["size"] .. " -r " .. config["fps"] .. " ".. show_pointer.. show_region .. follow_mouse .. " -f x11grab -thread_queue_size 1024 " .. " -i " .. Xdisplay .. " ".. audio .. audio_filter .. " -vcodec libx264 -preset ultrafast -acodec aac screencast.mp4"
 
+print("LAUNCH: "..str)
 filesys.unlink("screencast.mp4")
 
 dialog=NewDialog()
@@ -957,11 +980,17 @@ poll:add(log.S)
 while true
 do
 	S=poll:select(50)
+	if process.collect ~= nil
+	then
+	process.collect()
+	else
 	process.childExited()
+	end
 
 	if S == cmdS 
 	then
 		str=cmdS:readln()
+
 		if str==nil 
 		then
 			print("ERROR: ffmepg closed!")
