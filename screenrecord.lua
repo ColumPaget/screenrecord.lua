@@ -188,7 +188,7 @@ function QarmaLogDialog(form, text)
 local S, str
 local dialog={}
 
-str="cmd:yad --text-info --text='"..text.."'"
+str="cmd:qarma --text-info --text='"..text.."'"
 dialog.S=stream.STREAM(str)
 dialog.add=QarmaLogDialogAddText
 
