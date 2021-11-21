@@ -4,9 +4,11 @@ require("process")
 require("filesys")
 require("terminal")
 require("time")
+require("sys")
+
+
 
 function tobool(str)
-
 
 str=string.lower(strutil.trim(str))
 
@@ -20,6 +22,114 @@ if tonumber(str) > 0 then return true end
 
 return false
 end
+
+
+function CodecsInit()
+local codecs={}
+local video={} audio={}
+local cmdS, str
+
+codecs.items={}
+
+codecs.add=function(self, name, cmdline, extn)
+local codec={}
+
+codec.name=name
+codec.extn=extn
+codec.cmdline=cmdline
+self.items[name]=codec
+
+end
+
+codecs.get=function(self, name)
+return self.items[name]
+end
+
+codecs.list=function(self)
+local key, item, i, name
+local str=""
+local sort_table={}
+
+for key,item in pairs(self.items)
+do
+	table.insert(sort_table, key)
+end
+
+table.sort(sort_table)
+for i,name in ipairs(sort_table)
+do
+	if strutil.strlen(str) == 0 then str=name
+	else str=str.."|"..name
+	end
+end
+
+return str
+end
+
+cmdS=stream.STREAM("cmd:ffmpeg -encoders", "rw +stderr noshell")
+str=cmdS:readln()
+while str ~= nil
+do
+str=strutil.trim(str)
+toks=strutil.TOKENIZER(str, " ")
+toks:next()
+name=toks:next()
+
+if name=="flv" then video["flv"]=true
+elseif name=="h261" then video["h261"]=true
+elseif name=="h263" then video["h263"]=true
+elseif name=="libx264" then video["h264"]=true
+elseif name=="libx265" then video["h265"]=true
+elseif name=="mpeg4" then video["mpeg4"]=true
+elseif name=="libtheora" then video["theora"]=true
+elseif name=="libvpx" then video["vp8"]=true
+elseif name=="libvpx-vp9" then video["vp9"]=true
+elseif name=="vc2" then video["vc2"]=true
+elseif name=="aac" then audio["aac"]=true
+elseif name=="ac3" then audio["ac3"]=true
+elseif name=="libopus" then audio["opus"]=true
+elseif name=="flac" then audio["flac"]=true
+elseif name=="libvorbis" then audio["vorbis"]=true
+elseif name=="libmp3lame" then audio["libmp3lame"]=true
+elseif name=="nellymoser" then audio["nellymoser"]=true
+end
+
+str=cmdS:readln()
+end
+cmdS:close()
+
+--only works at certain resolutions and I can't be bothered with that right now
+-- if video["h263"] == true and audio["aac"]==true then codecs:add("3gp (h263/aac)", " -vcodec h263 -acodec aac ", ".3gp") end
+
+if video["flv"] == true and audio["libmp3lame"]==true then codecs:add("flv (flash player 7+ flv/mp3)", " -vcodec flv -acodec libmp3lame -ar 44100 ", ".flv") end
+if video["flv"] == true and audio["nellymoser"]==true then codecs:add("flv (flash player 7+ flv/nellymoser)", " -vcodec flv -acodec nellymoser -ar 44100 ", ".flv") end
+if video["flv"] == true and audio["aac"]==true then codecs:add("flv (flash player 9+ flv/aac)", " -vcodec flv -acodec aac ", ".flv") end
+if video["h263"] == true and audio["libmp3lame"]==true then codecs:add("f4v (flash player 9+ h263/mp3)", " -vcodec h263 -acodec libmp3lame ", ".f4v") end
+if video["h263"] == true and audio["aac"]==true then codecs:add("f4v (flash player 9+ h263/aac)", " -vcodec h263 -acodec aac ", ".f4v") end
+if video["h264"] == true and audio["aac"]==true then codecs:add("f4v (flash player 9+ h264/aac)", " -vcodec h264 -acodec aac ", ".f4v") end
+if video["h264"] == true and audio["libmp3lame"]==true then codecs:add("f4v (flash player 9+ h264/mp3)", " -vcodec h264 -acodec libmp3lame ", ".f4v") end
+if video["theora"]==true and audio["vorbis"]==true then codecs:add("ogv (theora/vorbis)", " -vcodec libtheora -qscale:v 10 -acodec libvorbis -qscale:a 10 ", ".ogv") end
+if video["theora"]==true and audio["opus"]==true then codecs:add("ogv (theora/opus)", " -vcodec libtheora -qscale:v 10 -acodec libopus ", ".ogv") end
+if video["theora"]==true and audio["flac"]==true then codecs:add("ogv (theora/flac)", " -vcodec libtheora -qscale:v 10 -acodec flac ", ".ogv") end
+if video["h264"] == true and audio["aac"] == true then codecs:add("mp4 (h264/aac)", " -vcodec libx264 -preset ultrafast -acodec aac ", ".mp4") end
+if video["h264"] == true and audio["libmp3lame"] == true then codecs:add("mp4 (h264/mp3)", " -vcodec libx264 -preset ultrafast -acodec libmp3lame ", ".mp4") end
+if video["h264"] == true and audio["opus"] == true then codecs:add("mp4 (h264/opus)", " -vcodec libx264 -preset ultrafast -acodec libopus ", ".mp4") end
+if video["h264"] == true and audio["vorbis"] == true then codecs:add("mp4 (h264/vorbis)", " -vcodec libx264 -preset ultrafast -acodec libvorbis ", ".mp4") end
+if video["h264"] == true and audio["flac"] == true then codecs:add("mp4 (h264/flac)", " -vcodec libx264 -preset ultrafast -acodec flac ", ".mp4") end
+if video["mpeg4"] == true and audio["aac"] == true then codecs:add("mp4 (mpeg4/aac)", " -vcodec mpeg4 -acodec aac ", ".mp4") end
+if video["mpeg4"] == true and audio["libmp3lame"] == true then codecs:add("mp4 (mpeg4/mp3)", " -vcodec mpeg4 -acodec libmp3lame ", ".mp4") end
+if video["mpeg4"] == true and audio["opus"] == true then codecs:add("mp4 (mpeg4/opus)", " -vcodec mpeg4 -acodec libopus ", ".mp4") end
+if video["mpeg4"] == true and audio["vorbis"] == true then codecs:add("mp4 (mpeg4/vorbis)", " -vcodec mpeg4 -acodec libvorbis ", ".mp4") end
+if video["mpeg4"] == true and audio["flac"] == true then codecs:add("mp4 (mpeg4/flac)", " -vcodec mpeg4 -acodec flac ", ".mp4") end
+if video["vp8"] == true and audio["vorbis"] == true then codecs:add("webm (vp8/vorbis)", " -vcodec libvpx -acodec libvorbis ", ".webm") end
+if video["vp9"] == true and audio["vorbis"] == true then codecs:add("webm (vp9/vorbis)", " -vcodec libvpx-vp9 -acodec libvorbis ", ".webm") end
+if video["vp9"] == true and audio["opus"] == true then codecs:add("webm (vp9/opus)", " -vcodec libvpx-vp9 -acodec libopus ", ".webm") end
+
+
+return codecs
+end
+
+
 
 
 function FormItemAdd(form, item_type, item_name, item_cmd_args, item_description)
@@ -46,6 +156,8 @@ function FormParseOutput(form, result_str)
 local results, form_item, val
 local config={}
 
+if strutil.strlen(result_str) == 0 then return nil end
+
 results=strutil.TOKENIZER(result_str, "|")
 
 for i,form_item in ipairs(form.config)
@@ -63,17 +175,53 @@ return config
 end
 
 
+function FormFormatChoices(choices, selected)
+local toks, item, combo_values
+local unselected=""
+local has_selection=false
+
+if strutil.strlen(selected) > 0 then has_selection=true end
+
+toks=strutil.TOKENIZER(choices, "|")
+item=toks:next()
+if has_selection == true then item=toks:next() end
+
+while item ~= nil
+do
+  if has_selection == false or selected ~= item 
+  then 
+	if strutil.strlen(unselected) > 0 then unselected=unselected .. "|" .. item 
+	else unselected=item
+	end
+  end
+  item=toks:next()
+end
+
+if has_selection == true then combo_values=selected.."|"..unselected
+else combo_values=unselected
+end
+
+return combo_values
+end
+
+
 
 function QarmaFormAddBoolean(form, name)
 form:add("boolean", name, "--add-checkbox='"..name.."'")
 end
 
-function QarmaFormAddChoice(form, name, choices)
-form:add("choice", name, "--add-combo='"..name.."' --combo-values='"..choices.."'")
+
+function QarmaFormAddChoice(form, name, choices, description, selected)
+local combo_values
+combo_values=FormFormatChoices(choices, selected)
+form:add("choice", name, "--add-combo='"..name.."' --combo-values='".. combo_values .."'")
 end
 
 function QarmaFormAddEntry(form, name)
-form:add("entry", name, "--add-entry='"..name.."'")
+local str
+
+str="--add-entry='"..name.."'"
+form:add("entry", name, str)
 end
 
 
@@ -110,10 +258,12 @@ return "no"
 end
 
 
-function QarmaInfoDialog(text)
+function QarmaInfoDialog(text, width, height)
 local S, str
 
 str="cmd:qarma --info --text='"..text.."'"
+if width > 0 then str=str.." --width "..tostring(width) end
+if height > 0 then str=str.." --height "..tostring(height) end
 S=stream.STREAM(str)
 str=S:readdoc()
 S:close()
@@ -124,7 +274,7 @@ end
 function QarmaTextEntryDialog(text)
 local S, str
 
-str="cmd:qarma --entry --text='"..text.."'"
+str="cmd:qarma --entry"
 S=stream.STREAM(str)
 str=S:readdoc()
 S:close()
@@ -184,11 +334,14 @@ dialog.S:flush()
 end
 
 
-function QarmaLogDialog(form, text)
+function QarmaLogDialog(form, text, width, height)
 local S, str
 local dialog={}
 
 str="cmd:qarma --text-info --text='"..text.."'"
+if width > 0 then str=str.." --width "..tostring(width) end
+if height > 0 then str=str.." --height "..tostring(height) end
+
 dialog.S=stream.STREAM(str)
 dialog.add=QarmaLogDialogAddText
 
@@ -234,8 +387,11 @@ function ZenityFormAddBoolean(form, name)
 form:add("boolean", name, "--add-combo='"..name.."' --combo-values='yes|no'")
 end
 
-function ZenityFormAddChoice(form, name, choices)
-form:add("choice", name, "--add-combo='"..name.."' --combo-values='"..choices.."'")
+function ZenityFormAddChoice(form, name, choices, description, selected)
+local combo_values
+combo_values=FormFormatChoices(choices, selected)
+
+form:add("choice", name, "--add-combo='"..name.."' --combo-values='"..combo_values.."'")
 end
 
 function ZenityFormAddEntry(form, name)
@@ -252,7 +408,6 @@ do
 	str=str..config_item.cmd_args.. " "
 end
 
-print("FORM: "..str)
 S=stream.STREAM("cmd:"..str, "")
 str=strutil.trim(S:readdoc())
 S:close()
@@ -404,8 +559,11 @@ form:add("boolean", name, "--field='"..name..":CHK' ''")
 end
 
 
-function YadFormAddChoice(form, name, choices)
-form:add("choice", name, "--field='"..name..":CB' '"..string.gsub(choices,'|', '!').."'")
+function YadFormAddChoice(form, name, choices, description, selected)
+local combo_values
+combo_values=FormFormatChoices(choices, selected)
+
+form:add("choice", name, "--field='"..name..":CB' '"..string.gsub(combo_values,'|', '!').."'")
 end
 
 
@@ -659,7 +817,7 @@ form:add("boolean", name, "", description)
 end
 
 
-function TextConsoleFormAddChoice(form, name, choices, description)
+function TextConsoleFormAddChoice(form, name, choices, description, selected)
 local item
 item=form:add("choice", name, "", description)
 item.choices=choices
@@ -750,12 +908,14 @@ return "native"
 end
 
 
-function NewDialog()
-local driver
+function NewDialog(config)
 local dialog={}
+local driver
 
+driver=config.driver
 dialog.config=""
-driver=DialogSelectDriver()
+
+if strutil.strlen(driver) == 0 then driver=DialogSelectDriver() end
 
 if driver == "qarma"
 then
@@ -855,11 +1015,31 @@ return dim
 end
 
 
-function SetupDialog(devices)
-local str, S, toks, tok, device, config
+
+function CopyChoicesToConfig(config, choices)
+local name, value
+
+if choices == nil then return nil end
+for name,value in pairs(choices)
+do
+	if value ~= nil
+	then
+		if name == "output path" then config["output_path"] = value
+		elseif name == "follow mouse" then config["follow_mouse"] = value
+		else config[name]=value
+		end
+	end
+end
+
+return config
+end
+
+
+function SetupDialog(config, devices)
+local str, S, toks, tok, device
 local dialog={}
 
-dialog=NewDialog()
+dialog=NewDialog(config)
 form=dialog:form("setup screen recording")
 
 str="none"
@@ -875,16 +1055,15 @@ do
 end
 
 form:addchoice("audio", str, "(select audio input or 'none')")
-form:addchoice("fps", "1|2|5|10|15|25|30", "(video frames per second)")
-form:addchoice("size", GetScreenResolution().."|1024x768|800x600|640x480", "(area of screen to capture)")
+form:addchoice("fps", "1|2|5|10|15|25|30|45|60", "(video frames per second)", config.fps)
+form:addchoice("size", GetScreenResolution().."|1024x768|800x600|640x480", "(area of screen to capture)", config.size)
+form:addchoice("codec", codecs:list(), "(codec)", config.codec)
+form:addchoice("follow mouse", "no|edge|centered", "(capture region moves with mouse)")
 form:addboolean("show capture region", "(draw outline of capture region on screen)")
 form:addboolean("noise reduction", "(if audio, apply noise filters)")
-form:addchoice("follow mouse", "no|edge|centered", "(capture region moves with mouse)")
---form:addentry("countdown", "(seconds of gracetime before recording)")
+form:addentry("countdown", "(seconds of gracetime before recording)")
 
-config=form:run()
-
-return config
+return CopyChoicesToConfig(config, form:run())
 end
 
 
@@ -946,6 +1125,8 @@ end
 
 
 
+
+
 function DoRecord(config)
 local audio=""
 local audio_filter=""
@@ -954,7 +1135,7 @@ local show_region=""
 local follow_mouse=""
 local audio=""
 local audio_filter=""
-local cmdS, S, poll, dialog, log, str, Xdisplay
+local cmdS, S, poll, dialog, log, str, Xdisplay, codec
 
 
 Xdisplay=process.getenv("DISPLAY") .. " "
@@ -962,15 +1143,17 @@ if config.audio ~= "none" then audio,audio_filter=BuildAudioConfig(config) end
 
 if config["show capture region"] == true then show_region="-show_region 1 " end
 --if config["show pointer"] == false then show_pointer="-draw_mouse 0 " end
-if config["follow mouse"] ~= "no" then follow_mouse="-follow_mouse "..config["follow mouse"] .. " " end
 
-str="ffmpeg -nostats -s " .. config["size"] .. " -r " .. config["fps"] .. " ".. show_pointer.. show_region .. follow_mouse .. " -f x11grab -thread_queue_size 1024 " .. " -i " .. Xdisplay .. " ".. audio .. audio_filter .. " -vcodec libx264 -preset ultrafast -acodec aac screencast.mp4"
+if config["follow_mouse"] ~= "no" then follow_mouse="-follow_mouse "..config["follow_mouse"] .. " " end
+
+codec=codecs:get(config.codec)
+
+str="ffmpeg -nostats -s " .. config["size"] .. " -r " .. config["fps"] .. " ".. show_pointer.. show_region .. follow_mouse .. " -f x11grab -thread_queue_size 1024 " .. " -i " .. Xdisplay .. " ".. audio .. audio_filter .. codec.cmdline .. config.output_path .. codec.extn
 
 print("LAUNCH: "..str)
-filesys.unlink("screencast.mp4")
 
-dialog=NewDialog()
-log=dialog:log("Close This Window To End Recording")
+dialog=NewDialog(config)
+log=dialog:log("Close This Window To End Recording", 800, 400)
 cmdS=stream.STREAM("cmd:" .. str, "rw +stderr noshell")
 
 poll=stream.POLL_IO()
@@ -1013,11 +1196,68 @@ if log.term ~= nil then log.term:reset() end
 end
 
 
+function PrintHelp()
+print("screencast.lua version 1.0")
+os.exit()
+end
 
+
+function ParseCommandLine(config)
+local i,item
+
+for i,item in ipairs(arg)
+do
+if item == "-?" or item == "--help" or item == "-help"
+then 
+	PrintHelp() 
+elseif item == "-dialog"
+then
+ config.driver=arg[i+1]
+ arg[i+1]=""
+elseif item == "-size"
+then
+ config.size=arg[i+1]
+ arg[i+1]=""
+elseif item == "-fps"
+then
+ config.fps=arg[i+1]
+ arg[i+1]=""
+elseif item == "-codec"
+then
+ config.codec=arg[i+1]
+ arg[i+1]=""
+elseif item == "-o"
+then
+ config.output_path=arg[i+1]
+ arg[i+1]=""
+end
+end
+
+return config
+end
+
+
+function InitConfig()
+local config={}
+
+config.output_path=sys.hostname() .. "-" .. time.format("%Y-%M-%YT%H-%M-%S")
+config.follow_mouse="no"
+config.fps=30
+config.size=0
+config.codec="mp4 (h264/aac)"
+
+return config
+end
+
+
+config=InitConfig()
+codecs=CodecsInit()
+ParseCommandLine(config)
 devices=GetSoundDevices()
-config=SetupDialog(devices)
---if config.countdown ~= nil and tonumber(config.countdown) > 0 then DoCountdown(config.countdown) end
+config=SetupDialog(config, devices)
 
-DoRecord(config)
+if config.countdown ~= nil and tonumber(config.countdown) > 0 then DoCountdown(config.countdown) end
+
+if config ~= nil then DoRecord(config) end
 
 
