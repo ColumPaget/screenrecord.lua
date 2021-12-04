@@ -31,13 +31,22 @@ local cmdS, str
 
 codecs.items={}
 
-codecs.add=function(self, name, cmdline, extn)
+codecs.add=function(self, name, cmdline, extn, has_video)
 local codec={}
 
 codec.name=name
 codec.extn=extn
 codec.cmdline=cmdline
 self.items[name]=codec
+
+-- has_video could be nil, or something else, so we only set it false
+-- if false is actually passed
+if has_video == false 
+then 
+codec.video=false
+else
+codec.video=true 
+end
 
 end
 
@@ -124,6 +133,11 @@ if video["mpeg4"] == true and audio["flac"] == true then codecs:add("mp4 (mpeg4/
 if video["vp8"] == true and audio["vorbis"] == true then codecs:add("webm (vp8/vorbis)", " -vcodec libvpx -acodec libvorbis ", ".webm") end
 if video["vp9"] == true and audio["vorbis"] == true then codecs:add("webm (vp9/vorbis)", " -vcodec libvpx-vp9 -acodec libvorbis ", ".webm") end
 if video["vp9"] == true and audio["opus"] == true then codecs:add("webm (vp9/opus)", " -vcodec libvpx-vp9 -acodec libopus ", ".webm") end
+if audio["libmp3lame"] == true then codecs:add("audio:mp3", " -acodec libmp3lame ", ".mp3", false) end
+if audio["opus"] == true then codecs:add("audio:opus", " -acodec libopus ", ".opus", false) end
+if audio["vorbis"] == true then codecs:add("audio:ogg vorbis", " -acodec libvorbis ", ".ogg", false) end
+if audio["flac"] == true then codecs:add("audio:flac", " -acodec flac ", ".flac", false) end
+
 
 
 return codecs
@@ -184,7 +198,6 @@ if strutil.strlen(selected) > 0 then has_selection=true end
 
 toks=strutil.TOKENIZER(choices, "|")
 item=toks:next()
-if has_selection == true then item=toks:next() end
 
 while item ~= nil
 do
@@ -328,11 +341,6 @@ return str
 end
 
 
-function QarmaLogDialogAddText(dialog, text)
-if text ~= nil then dialog.S:writeln(text.."\n") end
-dialog.S:flush()
-end
-
 
 function QarmaLogDialog(form, text, width, height)
 local S, str
@@ -343,7 +351,39 @@ if width > 0 then str=str.." --width "..tostring(width) end
 if height > 0 then str=str.." --height "..tostring(height) end
 
 dialog.S=stream.STREAM(str)
-dialog.add=QarmaLogDialogAddText
+
+dialog.add=function(dialog, text)
+if text ~= nil then dialog.S:writeln(text.."\n") end
+dialog.S:flush()
+end
+
+
+return dialog
+end
+
+
+
+function QarmaProgressDialog(text, max, close_on_full)
+local str, S
+local dialog={}
+
+str="cmd:qarma --progress --text='".. text.."' "
+if close_on_full == true then str=str.."--auto-close --auto-kill" end
+
+dialog.max=max
+dialog.S=stream.STREAM(str)
+
+dialog.add=function(self, val, title)
+local perc
+
+	if val > 0 then perc=math.floor(val * 100 / max)
+	else perc=val
+	end
+
+	if title ~= nil then self.S:writeln("# "..tostring(title).."\r\n") end
+	self.S:writeln(string.format("%d\r\n", perc))
+	self.S:flush()
+end
 
 return dialog
 end
@@ -500,10 +540,31 @@ return str
 end
 
 
-function ZenityLogDialogAddText(dialog, text)
-if text ~= nil then dialog.S:writeln(text.."\n") end
-dialog.S:flush()
+function ZenityProgressDialog(text, max, close_on_full)
+local str, S
+local dialog={}
+
+str="cmd:zenity --progress --text='".. text.."' "
+if close_on_full==true then str=str.." --auto-close --auto-kill" end
+
+dialog.max=max
+dialog.S=stream.STREAM(str)
+
+dialog.add=function(self, val)
+local perc
+
+	if val > 0 then perc=math.floor(val * 100 / max)
+	else perc=val
+	end
+
+	self.S:writeln(string.format("%d\r\n", perc))
+	self.S:flush()
 end
+
+return dialog
+end
+
+
 
 
 function ZenityLogDialog(form, text)
@@ -512,7 +573,11 @@ local dialog={}
 
 str="cmd:zenity --text-info --auto-scroll --title='"..text.."'"
 dialog.S=stream.STREAM(str)
-dialog.add=ZenityLogDialogAddText
+dialog.add=function(self, text)
+if text ~= nil then self.S:writeln(text.."\n") end
+self.S:flush()
+end
+
 
 return dialog
 end
@@ -948,20 +1013,45 @@ return device
 end
 
 
-function GetSoundDevices()
-local S, str, pos
-local devices={}
+function AddALSASoundDevice(devices, devnum, name)
+local S, chans, str
+local in_capture=false
 
-devnum=0
-Glob=filesys.GLOB("/dev/dsp*")
-str=Glob:next()
-while str ~= nil
-do
-	devnum=devnum+1
-	AddSoundDevice(devices, "oss", devnum, str, 1)
-	AddSoundDevice(devices, "oss", devnum, str, 2)
-	str=Glob:next()
+S=stream.STREAM("/proc/asound/card"..devnum.."/stream0", "r")
+if S ~= nil
+then
+	str=S:readln()
+	while str ~= nil
+	do
+	str=strutil.trim(str)
+	if str=="Capture:"
+	then
+		in_capture=true
+	elseif str == ""
+	then
+		in_capture=false
+	elseif string.sub(str, 1, 10) == "Channels: "
+	then
+		chans=tonumber(string.sub(str, 11))
+	end
+	str=S:readln()
+	end
+	S:close()
 end
+
+if chans==1
+then
+		AddSoundDevice(devices, "alsa", devnum, name, 1)
+else
+		AddSoundDevice(devices, "alsa", devnum, name, 1)
+		AddSoundDevice(devices, "alsa", devnum, name, 2)
+end
+
+end
+
+
+function ALSALoadSoundCards(devices)
+local S, str, pos, name, toks, tok, devnum
 
 S=stream.STREAM("/proc/asound/cards", "r");
 str=S:readln()
@@ -980,14 +1070,38 @@ do
 		end
 		tok=toks:next()
 		end
-		AddSoundDevice(devices, "alsa", devnum, name, 1)
-		AddSoundDevice(devices, "alsa", devnum, name, 2)
+
+		AddALSASoundDevice(devices, devnum, name)
 
 		str=S:readln() --the next line is more information that we don't need
 		str=S:readln()
 end
 S:close()
+end
 
+
+function OSSLoadSoundCards(devices)
+local Glob, S, str, pos, devnum
+
+devnum=0
+Glob=filesys.GLOB("/dev/dsp*")
+str=Glob:next()
+while str ~= nil
+do
+	devnum=devnum+1
+	AddSoundDevice(devices, "oss", devnum, str, 1)
+	AddSoundDevice(devices, "oss", devnum, str, 2)
+	str=Glob:next()
+end
+end
+
+
+
+function GetSoundDevices()
+local devices={}
+
+OSSLoadSoundCards(devices)
+ALSALoadSoundCards(devices)
 return devices
 end
 
@@ -1056,7 +1170,7 @@ end
 
 form:addchoice("audio", str, "(select audio input or 'none')")
 form:addchoice("fps", "1|2|5|10|15|25|30|45|60", "(video frames per second)", config.fps)
-form:addchoice("size", GetScreenResolution().."|1024x768|800x600|640x480", "(area of screen to capture)", config.size)
+form:addchoice("size", GetScreenResolution().."|1024x768|800x600|640x480|no video", "(area of screen to capture)", config.size)
 form:addchoice("codec", codecs:list(), "(codec)", config.codec)
 form:addchoice("follow mouse", "no|edge|centered", "(capture region moves with mouse)")
 form:addboolean("show capture region", "(draw outline of capture region on screen)")
@@ -1071,23 +1185,42 @@ end
 function DoCountdown(count)
 local i, str, S, perc
 
-S=stream.STREAM("cmd:qarma --progress --text='recording in:' --auto-close --auto-kill")
+dialog=QarmaProgressDialog("recording in:", count, true)
 for i=0,count,1
 do
-	if i > 0 
-	then 
-		perc=math.floor(i * 100 / count)
-	else 
-		perc=0
-	end
-
-	str=string.format("%d\r\n", perc)
-	S:writeln(str)
-	S:flush()
+	dialog:add(i, i)
 	time.sleep(1)
 end
 
 end
+
+
+
+function AudioRecordDialog()
+local dialog={}
+
+dialog=QarmaProgressDialog("level:", 100)
+dialog.add_level=dialog.add
+
+dialog.add=function(self, str)
+local toks, tok
+local dB=0
+
+toks=strutil.TOKENIZER(str, " ")
+tok=toks:next()
+while tok ~= nil
+do
+if tok=="M:" then dB=tonumber(toks:next()) end
+tok=toks:next()
+end
+
+self:add_level(100 + dB)
+
+end
+
+return(dialog)
+end
+
 
 
 
@@ -1135,8 +1268,8 @@ local show_region=""
 local follow_mouse=""
 local audio=""
 local audio_filter=""
-local cmdS, S, poll, dialog, log, str, Xdisplay, codec
-
+local cmdS, S, poll, dialog, str, Xdisplay, codec
+local gui
 
 Xdisplay=process.getenv("DISPLAY") .. " "
 if config.audio ~= "none" then audio,audio_filter=BuildAudioConfig(config) end
@@ -1148,17 +1281,25 @@ if config["follow_mouse"] ~= "no" then follow_mouse="-follow_mouse "..config["fo
 
 codec=codecs:get(config.codec)
 
-str="ffmpeg -nostats -s " .. config["size"] .. " -r " .. config["fps"] .. " ".. show_pointer.. show_region .. follow_mouse .. " -f x11grab -thread_queue_size 1024 " .. " -i " .. Xdisplay .. " ".. audio .. audio_filter .. codec.cmdline .. config.output_path .. codec.extn
+if config["size"]=="no video" or codec.video==false
+then
+	--str="ffmpeg -nostats -filter_complex ebur128  -thread_queue_size 1024 " .. audio .. audio_filter .. codec.cmdline .. config.output_path .. codec.extn
+	str="ffmpeg -filter_complex ebur128 -thread_queue_size 1024 " .. audio .. audio_filter .. codec.cmdline .. config.output_path .. codec.extn
+	gui=AudioRecordDialog(config)
+else
+	str="ffmpeg -nostats -s " .. config["size"] .. " -r " .. config["fps"] .. " ".. show_pointer.. show_region .. follow_mouse .. " -f x11grab -thread_queue_size 1024 " .. " -i " .. Xdisplay .. " ".. audio .. audio_filter .. codec.cmdline .. config.output_path .. codec.extn
+
+dialog=NewDialog(config)
+gui=dialog:log("Close This Window To End Recording", 800, 400)
+cmdS=stream.STREAM("cmd:" .. str, "rw +stderr noshell")
+end
 
 print("LAUNCH: "..str)
 
-dialog=NewDialog(config)
-log=dialog:log("Close This Window To End Recording", 800, 400)
 cmdS=stream.STREAM("cmd:" .. str, "rw +stderr noshell")
-
 poll=stream.POLL_IO()
 poll:add(cmdS)
-poll:add(log.S)
+poll:add(gui.S)
 
 while true
 do
@@ -1180,9 +1321,9 @@ do
 			break
 		else
 			str=strutil.trim(str)
-			log:add(str)
+			gui:add(str)
 		end
-	elseif log.S ~= nil and S == log.S
+	elseif gui.S ~= nil and S == gui.S
 	then
 		-- anything from the logging window means the window has been closed
 		break
@@ -1191,7 +1332,12 @@ end
 
 process.kill(tonumber(cmdS:getvalue("PeerPID")))
 cmdS:close()
-if log.term ~= nil then log.term:reset() end
+
+if gui.term ~= nil
+then
+log.term:clear()
+log.term:reset()
+end
 
 end
 
@@ -1243,7 +1389,7 @@ local config={}
 config.output_path=sys.hostname() .. "-" .. time.format("%Y-%M-%YT%H-%M-%S")
 config.follow_mouse="no"
 config.fps=30
-config.size=0
+config.size=""
 config.codec="mp4 (h264/aac)"
 
 return config
@@ -1256,8 +1402,11 @@ ParseCommandLine(config)
 devices=GetSoundDevices()
 config=SetupDialog(config, devices)
 
-if config.countdown ~= nil and tonumber(config.countdown) > 0 then DoCountdown(config.countdown) end
 
-if config ~= nil then DoRecord(config) end
+if config ~= nil
+then 
+if config.countdown ~= nil and tonumber(config.countdown) > 0 then DoCountdown(config.countdown) end
+DoRecord(config)
+end
 
 
