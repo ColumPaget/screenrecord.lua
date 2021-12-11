@@ -179,29 +179,26 @@ codec=codecs:get(config.codec)
 
 if config["size"]=="no video" or codec.video==false
 then
+	--Audio only
 	--str="ffmpeg -nostats -filter_complex ebur128  -thread_queue_size 1024 " .. audio .. audio_filter .. codec.cmdline .. config.output_path .. codec.extn
 	str="ffmpeg -filter_complex ebur128 -thread_queue_size 1024 " .. audio .. audio_filter .. codec.cmdline .. config.output_path .. codec.extn
 	gui=AudioRecordDialog(config)
 else
+	--Audio and Video (Default)
 	str="ffmpeg -nostats -s " .. config["size"] .. " -r " .. config["fps"] .. " ".. show_pointer.. show_region .. follow_mouse .. " -f x11grab -thread_queue_size 1024 " .. " -i " .. Xdisplay .. " ".. audio .. audio_filter .. codec.cmdline .. config.output_path .. codec.extn
 
 
 dialog=NewDialog(config)
-if dialog.term ~= nil
-then
-dialog.term:clear()
-end
-
 gui=dialog:log("Close This Window To End Recording", 800, 400)
-cmdS=stream.STREAM("cmd:" .. str, "rw +stderr noshell")
-end
-
 gui:add("LAUNCH: "..str)
+end
 
 cmdS=stream.STREAM("cmd:" .. str, "rw +stderr noshell")
 poll=stream.POLL_IO()
 poll:add(cmdS)
 poll:add(gui.S)
+
+time.usleep(30)
 
 while true
 do
@@ -213,6 +210,8 @@ do
 	process.childExited()
 	end
 
+	if S ~= nil
+	then
 	if S == cmdS 
 	then
 		str=cmdS:readln()
@@ -228,9 +227,9 @@ do
 	elseif gui.S ~= nil and S == gui.S
 	then
 		str=gui.S:readln()
-		io.stderr:write("GUI: "..str)
 		-- anything from the logging window means the window has been closed
 		break
+	end
 	end
 end
 
@@ -315,4 +314,3 @@ if config.countdown ~= nil and tonumber(config.countdown) > 0 then DoCountdown(c
 DoRecord(config)
 end
 
-print("END!")

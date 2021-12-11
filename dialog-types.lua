@@ -695,6 +695,8 @@ local dialog={}
 dialog.S=form.stdio
 
 dialog.term=form.term
+dialog.term:clear()
+
 dialog.add=TextConsoleLogDialogAddText
 dialog.term:bar("PRESS ANY KEY TO END RECORDING")
 
