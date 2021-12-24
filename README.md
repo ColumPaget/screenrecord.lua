@@ -10,16 +10,16 @@ INSTALL
 
 The screenrecord.lua code is broken up into a number of submodules, with a simple makefile that concats these together into 'screenrecord.lua'. The resulting 'screenrecord.lua' can then be run by lua. So the default install is:
 
-```Â
+```
 make
 make install
-```Â
+```
 
 the file 'screenrecord.lua' is the actual 'program' to be run by lua and is installed in '/usr/local/bin' by default. You can manually copy it to someplace else if you want. it can either be run as:
 
-```Â
+```
 lua screenrecord.lua
-```Â
+```
 
 or you can use linux's binfmt system to automatically invoke lua when the program is run.
 
@@ -32,7 +32,7 @@ USAGE
 OPTIONS
 =======
 
-```Â
+```
   -ui <type>          specify ui type to use. Values are qarma, zenity, yad or text
   -size <x.y>         specify recording window size
   -fps <value>        frames per second to record at
@@ -41,4 +41,4 @@ OPTIONS
   -?                  help text
   -help               help text
   --help              help text
-```Â
+```
