@@ -1401,11 +1401,12 @@ end
 function DoCountdown(count)
 local i, str, S, perc
 
-dialog=dialogs:progress("recording in:")
-dialog:set_max(count-1)
-for i=0,count,1
+dialog=dialogs:progress("Recording Countdown")
+dialog:set_max(count)
+for i=0,count+1,1
 do
-	dialog:add(i, i)
+	str=string.format("%d seconds", count+1-i)
+	dialog:add(i, str)
 	time.sleep(1)
 end
 
