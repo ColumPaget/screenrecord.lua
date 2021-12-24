@@ -888,22 +888,44 @@ end
 
 
 
-function TextConsoleProgressDialog(dialogs, text, close_on_full)
-local str, S
+function TextConsoleProgressDialog(dialogs, title, text)
+local str
 local progress={}
 
 dialogs.term:clear()
-dialogs.term:move(2,2)
-dialogs.term:puts(text)
+dialogs.term:move(0,0)
+dialogs.term:puts("~B~w"..title.."~>~0")
+dialogs.term:move(0,3)
+if strutil.strlen(text) > 0 then dialogs.term:puts(text) end
 
+progress.S=dialogs.term.S
 progress.max=100
 progress.term=dialogs.term
-dialog.close=dialogs.generic_close
-dialog.set_max=dialogs.generic_setmax
+progress.set_max=dialogs.generic_setmax
 
-progress.add=function(self, val)
-self.term:move(2,3)
-self.term:puts(string.format("%d", self.max - val))
+-- as we are not talking to a remote window/process
+-- so 'close' is an empty function
+progress.close=function(self)
+end
+
+
+progress.add=function(self, val, text)
+local perc, i
+
+self.term:move(0,8)
+if strutil.strlen(text) > 0 then self.term:puts(text.."~>") end
+
+self.term:move(2,9)
+
+perc=math.floor(val * 100 / progress.max)
+
+str=""
+for i=0,perc,1 do str=str.."*" end
+for i=perc,100,1 do str=str.." " end
+
+--str=string.format("%d", math.floor(self.max - tonumber(val)))
+self.term:puts("["..str.."]~>")
+self.term:flush()
 end
 
 return progress
@@ -1006,41 +1028,43 @@ end
 
 function DialogSelectDriver()
 
-if strutil.strlen(filesys.find("zenity", process.getenv("PATH"))) > 0 then return "zenity" end
-if strutil.strlen(filesys.find("qarma", process.getenv("PATH"))) > 0 then return "qarma" end
 if strutil.strlen(filesys.find("yad", process.getenv("PATH"))) > 0 then return "yad" end
+if strutil.strlen(filesys.find("qarma", process.getenv("PATH"))) > 0 then return "qarma" end
+if strutil.strlen(filesys.find("zenity", process.getenv("PATH"))) > 0 then return "zenity" end
 
-return "native"
+return "text"
 end
 
 
 function NewDialog(config)
-local dialog={}
+local dialogs={}
 local driver
 
 driver=config.driver
-dialog.config=""
+dialogs.config=""
 
 if strutil.strlen(driver) == 0 then driver=DialogSelectDriver() end
 
 if driver == "qarma"
 then
-	dialog=QarmaObjectCreate()
+	dialogs=QarmaObjectCreate()
 elseif driver == "zenity"
 then
-	dialog=ZenityObjectCreate()
+	dialogs=ZenityObjectCreate()
 elseif driver == "yad"
 then
-	dialog=YadObjectCreate()
+	dialogs=YadObjectCreate()
 else
-	dialog=TextConsoleObjectCreate(dialog)
+	driver="text"
+	dialogs=TextConsoleObjectCreate(dialogs)
 end
 
+dialogs.driver=driver
 
--- these are generic functions that are added to dialogs when
--- they are created. 'setmax' is only added to progress dialogs
--- 'close' is added to all dialog types
-dialog.generic_close=function(self)
+-- these are generic functions that are added to dialogss when
+-- they are created. 'setmax' is only added to progress dialogss
+-- 'close' is added to all dialogs types
+dialogs.generic_close=function(self)
 if self.S ~= nil
 then
 process.kill(tonumber(0-self.S:getvalue("PeerPID")))
@@ -1048,11 +1072,11 @@ self.S:close()
 end
 end
 
-dialog.generic_setmax=function(self, max)
+dialogs.generic_setmax=function(self, max)
 self.max=tonumber(max)
 end
 
-return dialog
+return dialogs
 end
 
 function CodecsInit()
@@ -1403,9 +1427,9 @@ local i, str, S, perc
 
 dialog=dialogs:progress("Recording Countdown")
 dialog:set_max(count)
-for i=0,count+1,1
+for i=0,count,1
 do
-	str=string.format("%d seconds", count+1-i)
+	str=string.format("%d seconds", count-i)
 	dialog:add(i, str)
 	time.sleep(1)
 end
@@ -1417,13 +1441,21 @@ end
 
 function AudioRecordDialog(record_config)
 local dialog={}
-local str
+local str, title
 
 str="recording start: "..time.format("%H:%M:%S") .."   codec: "..record_config.codec .."\n"
 str=str.."filename: " .. filesys.basename(record_config.output_path) ..  "\n"
 str=str.."audio from: "..record_config.audio.."\n"
 str=str.."video size: "..record_config.size
-dialog=dialogs:progress("Close this window to end Recording", str, 600, 200)
+
+if dialogs.driver=="text"
+then
+				title="Press any key to end recording"
+else
+				title="Close this window to end recording"
+end
+
+dialog=dialogs:progress(title, str, 600, 200)
 dialog.start_time=time.secs()
 dialog.output_path=record_config.output_path
 dialog.add_level=dialog.add
@@ -1490,9 +1522,10 @@ local audio_filter=""
 		audio="-f pulse -thread_queue_size 1024 -ac ".. channels .." -i default "
 	end
 
-	if config["noise reduction"] == true then audio_filter="-af highpass=f=200,lowpass=f=3000 " end
 
-	audio_filter=audio_filter .. " -filter_complex ebur128 "
+	audio_filter=audio_filter .. " -filter_complex ebur128"
+	if config["noise reduction"] == true then audio_filter=audio_filter .. ",highpass=f=200,lowpass=f=3000" end
+	audio_filter=audio_filter .. " "
 	return audio, audio_filter
 end
 

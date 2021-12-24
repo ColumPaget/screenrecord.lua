@@ -5,6 +5,23 @@ screenrecord.lua is a lua script that launches an ffmpeg process for screen-reco
 
 screenrecord.lua autodetects the ui-types that are available, and to some extent OSS, ALSA and PulseAudio sources that are available (though some of these may not work, as for many devices it's not easy to detect if the input is mono or stereo, and so both are offered but one will fail).
 
+INSTALL
+=======
+
+The screenrecord.lua code is broken up into a number of submodules, with a simple makefile that concats these together into 'screenrecord.lua'. The resulting 'screenrecord.lua' can then be run by lua. So the default install is:
+
+```Â
+make
+make install
+```Â
+
+the file 'screenrecord.lua' is the actual 'program' to be run by lua and is installed in '/usr/local/bin' by default. You can manually copy it to someplace else if you want. it can either be run as:
+
+```Â
+lua screenrecord.lua
+```Â
+
+or you can use linux's binfmt system to automatically invoke lua when the program is run.
 
 
 USAGE

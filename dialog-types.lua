@@ -787,22 +787,44 @@ end
 
 
 
-function TextConsoleProgressDialog(dialogs, text, close_on_full)
-local str, S
+function TextConsoleProgressDialog(dialogs, title, text)
+local str
 local progress={}
 
 dialogs.term:clear()
-dialogs.term:move(2,2)
-dialogs.term:puts(text)
+dialogs.term:move(0,0)
+dialogs.term:puts("~B~w"..title.."~>~0")
+dialogs.term:move(0,3)
+if strutil.strlen(text) > 0 then dialogs.term:puts(text) end
 
+progress.S=dialogs.term.S
 progress.max=100
 progress.term=dialogs.term
-dialog.close=dialogs.generic_close
-dialog.set_max=dialogs.generic_setmax
+progress.set_max=dialogs.generic_setmax
 
-progress.add=function(self, val)
-self.term:move(2,3)
-self.term:puts(string.format("%d", self.max - val))
+-- as we are not talking to a remote window/process
+-- so 'close' is an empty function
+progress.close=function(self)
+end
+
+
+progress.add=function(self, val, text)
+local perc, i
+
+self.term:move(0,8)
+if strutil.strlen(text) > 0 then self.term:puts(text.."~>") end
+
+self.term:move(2,9)
+
+perc=math.floor(val * 100 / progress.max)
+
+str=""
+for i=0,perc,1 do str=str.."*" end
+for i=perc,100,1 do str=str.." " end
+
+--str=string.format("%d", math.floor(self.max - tonumber(val)))
+self.term:puts("["..str.."]~>")
+self.term:flush()
 end
 
 return progress
@@ -905,41 +927,43 @@ end
 
 function DialogSelectDriver()
 
-if strutil.strlen(filesys.find("zenity", process.getenv("PATH"))) > 0 then return "zenity" end
-if strutil.strlen(filesys.find("qarma", process.getenv("PATH"))) > 0 then return "qarma" end
 if strutil.strlen(filesys.find("yad", process.getenv("PATH"))) > 0 then return "yad" end
+if strutil.strlen(filesys.find("qarma", process.getenv("PATH"))) > 0 then return "qarma" end
+if strutil.strlen(filesys.find("zenity", process.getenv("PATH"))) > 0 then return "zenity" end
 
-return "native"
+return "text"
 end
 
 
 function NewDialog(config)
-local dialog={}
+local dialogs={}
 local driver
 
 driver=config.driver
-dialog.config=""
+dialogs.config=""
 
 if strutil.strlen(driver) == 0 then driver=DialogSelectDriver() end
 
 if driver == "qarma"
 then
-	dialog=QarmaObjectCreate()
+	dialogs=QarmaObjectCreate()
 elseif driver == "zenity"
 then
-	dialog=ZenityObjectCreate()
+	dialogs=ZenityObjectCreate()
 elseif driver == "yad"
 then
-	dialog=YadObjectCreate()
+	dialogs=YadObjectCreate()
 else
-	dialog=TextConsoleObjectCreate(dialog)
+	driver="text"
+	dialogs=TextConsoleObjectCreate(dialogs)
 end
 
+dialogs.driver=driver
 
--- these are generic functions that are added to dialogs when
--- they are created. 'setmax' is only added to progress dialogs
--- 'close' is added to all dialog types
-dialog.generic_close=function(self)
+-- these are generic functions that are added to dialogss when
+-- they are created. 'setmax' is only added to progress dialogss
+-- 'close' is added to all dialogs types
+dialogs.generic_close=function(self)
 if self.S ~= nil
 then
 process.kill(tonumber(0-self.S:getvalue("PeerPID")))
@@ -947,10 +971,10 @@ self.S:close()
 end
 end
 
-dialog.generic_setmax=function(self, max)
+dialogs.generic_setmax=function(self, max)
 self.max=tonumber(max)
 end
 
-return dialog
+return dialogs
 end
 
