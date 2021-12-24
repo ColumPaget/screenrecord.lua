@@ -1,3 +1,6 @@
+
+
+
 function FormItemAdd(form, item_type, item_name, item_cmd_args, item_description)
 local form_item={}
 
@@ -127,8 +130,8 @@ function QarmaInfoDialog(dialogs, text, width, height)
 local S, str
 
 str="cmd:qarma --info --text='"..text.."'"
-if width > 0 then str=str.." --width "..tostring(width) end
-if height > 0 then str=str.." --height "..tostring(height) end
+if width ~= nil and width > 0 then str=str.." --width "..tostring(width) end
+if height ~= nil and height > 0 then str=str.." --height "..tostring(height) end
 S=stream.STREAM(str)
 str=S:readdoc()
 S:close()
@@ -195,40 +198,46 @@ end
 
 
 function QarmaLogDialog(form, text, width, height)
-local S, str
+local str
 local dialog={}
 
-str="cmd:qarma --text-info --text='"..text.."'"
-if width > 0 then str=str.." --width "..tostring(width) end
-if height > 0 then str=str.." --height "..tostring(height) end
+str="cmd:qarma --text-info --title='"..text.."'"
+if width ~= nil and width > 0 then str=str.." --width "..tostring(width) end
+if height ~= nil and height > 0 then str=str.." --height "..tostring(height) end
 
-dialog.S=stream.STREAM(str)
+dialog.S=stream.STREAM(str, "rw")
+dialog.close=dialogs.generic_close
 
 dialog.add=function(dialog, text)
 if text ~= nil then dialog.S:writeln(text.."\n") end
 dialog.S:flush()
 end
 
-
 return dialog
 end
 
 
 
-function QarmaProgressDialog(dialogs, text, max, close_on_full)
-local str, S
+function QarmaProgressDialog(dialogs, title, text, width, height)
+local str
 local dialog={}
 
-str="cmd:qarma --progress --text='".. text.."' "
-if close_on_full == true then str=str.."--auto-close --auto-kill" end
+str="cmd:qarma --progress --cancel-label='Done' "
+if strutil.strlen(text) > 0 then str=str.."--text='" .. text .. "' " end
+if strutil.strlen(title) > 0 then str=str.."--title='".. title .."' " end
+if width ~= nil and width > 0 then str=str.." --width "..tostring(width) end
+if height ~= nil and height > 0 then str=str.." --height "..tostring(height) end
 
-dialog.max=max
-dialog.S=stream.STREAM(str)
+
+dialog.S=stream.STREAM(str, "rw")
+dialog.max=100
+dialog.close=dialogs.generic_close
+dialog.set_max=dialogs.generic_setmax
 
 dialog.add=function(self, val, title)
 local perc
 
-	if val > 0 then perc=math.floor(val * 100 / max)
+	if val > 0 then perc=math.floor(val * 100 / self.max)
 	else perc=val
 	end
 
@@ -308,7 +317,7 @@ return FormParseOutput(form, str)
 end
 
 
-function ZenityYesNoDialog(dialogs, text, flags)
+function ZenityYesNoDialog(dialog, text, flags)
 local S, str, pid
 
 str="cmd:zenity --question --text='"..text.."'"
@@ -324,18 +333,21 @@ return "no"
 end
 
 
-function ZenityInfoDialog(dialogs, text)
+function ZenityInfoDialog(dialog, text)
 local S, str
 
 str="cmd:zenity --info --text='"..text.."'"
 S=stream.STREAM(str)
+if S ~= nil
+then
 str=S:readdoc()
 S:close()
+end
 
 end
 
 
-function ZenityTextEntryDialog(dialogs, text)
+function ZenityTextEntryDialog(dialog, text)
 local S, str
 
 str="cmd:zenity --entry --text='"..text.."'"
@@ -347,7 +359,7 @@ return str
 end
 
 
-function ZenityFileSelectionDialog(dialogs, text)
+function ZenityFileSelectionDialog(dialog, text)
 local S, str
 
 str="cmd:zenity --file-selection --text='"..text.."'"
@@ -359,7 +371,7 @@ return str
 end
 
 
-function ZenityCalendarDialog(dialogs, text)
+function ZenityCalendarDialog(dialog, text)
 local S, str
 
 str="cmd:zenity --calendar --text='"..text.."'"
@@ -371,7 +383,7 @@ return str
 end
 
 
-function ZenityMenuDialog(dialogs, text, options)
+function ZenityMenuDialog(dialog, text, options)
 local S, str, toks, tok
 
 str="cmd:zenity --list --hide-header --text='"..text.."' "
@@ -392,26 +404,33 @@ return str
 end
 
 
-function ZenityProgressDialog(dialogs, text, max, close_on_full)
+function ZenityProgressDialog(dialog, title, text, width, height)
 local str, S
 local dialog={}
 
-str="cmd:zenity --progress --text='".. text.."' "
-if close_on_full==true then str=str.." --auto-close --auto-kill" end
+str="cmd:zenity --progress --title='" .. title .. "' --text='".. text.."' "
+if width ~= nil and width > 0 then str=str.." --width "..tostring(width) end
+if height ~= nil and height > 0 then str=str.." --height "..tostring(height) end
 
-dialog.max=max
-dialog.S=stream.STREAM(str)
+dialog.max=100
+dialog.S=stream.STREAM(str, "rw")
+dialog.close=dialogs.generic_close
+dialog.set_max=dialogs.generic_setmax
 
-dialog.add=function(self, val)
+
+dialog.add=function(self, val, title)
 local perc
 
-	if val > 0 then perc=math.floor(val * 100 / max)
+	if val > 0 then perc=math.floor(val * 100 / self.max)
 	else perc=val
 	end
 
+	if title ~= nil then self.S:writeln("# "..tostring(title).."\r\n") end
 	self.S:writeln(string.format("%d\r\n", perc))
 	self.S:flush()
 end
+
+
 
 return dialog
 end
@@ -424,7 +443,12 @@ local S, str
 local dialog={}
 
 str="cmd:zenity --text-info --auto-scroll --title='"..text.."'"
-dialog.S=stream.STREAM(str)
+if width ~= nil and width > 0 then str=str.." --width "..tostring(width) end
+if height ~= nil and height > 0 then str=str.." --height "..tostring(height) end
+
+dialog.S=stream.STREAM(str, "rw")
+dialog.close=dialogs.generic_close
+
 dialog.add=function(self, text)
 if text ~= nil then self.S:writeln(text.."\n") end
 self.S:flush()
@@ -507,7 +531,7 @@ end
 
 
 
-function YadYesNoDialog(dialogs, text, flags)
+function YadYesNoDialog(dialog, text, flags)
 local S, str, pid
 
 str="cmd:yad --question --text='"..text.."'"
@@ -523,7 +547,7 @@ return "no"
 end
 
 
-function YadInfoDialog(dialogs, text)
+function YadInfoDialog(dialog, text)
 local S, str
 
 str="cmd:yad --text='"..text.."'"
@@ -534,7 +558,7 @@ S:close()
 end
 
 
-function YadTextEntryDialog(dialogs, text)
+function YadTextEntryDialog(dialog, text)
 local S, str
 
 str="cmd:yad --entry --text='"..text.."'"
@@ -547,7 +571,7 @@ end
 
 
 
-function YadFileSelectionDialog(dialogs, text)
+function YadFileSelectionDialog(dialog, text)
 local S, str
 
 str="cmd:yad --file-selection --text='"..text.."'"
@@ -559,7 +583,7 @@ return str
 end
 
 
-function YadCalendarDialog(dialogs, text)
+function YadCalendarDialog(dialog, text)
 local S, str
 
 str="cmd:yad --calendar --text='"..text.."'"
@@ -592,7 +616,7 @@ end
 
 
 
-function YadMenuDialog(dialogs, text, options)
+function YadMenuDialog(dialog, text, options)
 local S, str, toks, tok
 
 str="cmd:yad --list --no-headers --column='c1' " 
@@ -614,7 +638,7 @@ end
 
 
 
-function YadFormObjectCreate(dialogs, title)
+function YadFormObjectCreate(dialog, title)
 local form={}
 
 form.title=title
@@ -646,7 +670,7 @@ return dialogs
 end
 
 
-function TextConsoleInfoDialog(dialogs, text)
+function TextConsoleInfoDialog(dialog, text)
 
 end
 
@@ -666,14 +690,14 @@ end
 
 
 
-function TextConsoleFileSelectionDialog(dialogs, text)
+function TextConsoleFileSelectionDialog(dialog, text)
 local str
 
 return str
 end
 
 
-function TextConsoleCalendarDialog(dialogs, text)
+function TextConsoleCalendarDialog(dialog, text)
 local str
 
 return str
@@ -698,7 +722,7 @@ dialog.term=form.term
 dialog.term:clear()
 
 dialog.add=TextConsoleLogDialogAddText
-dialog.term:bar("PRESS ANY KEY TO END RECORDING")
+dialog.term:bar(text)
 
 return dialog
 end
@@ -730,22 +754,25 @@ end
 
 
 
-function TextConsoleProgressDialog(dialogs, text, max, close_on_full)
+function TextConsoleProgressDialog(dialogs, text, close_on_full)
 local str, S
-local dialog={}
+local progress={}
 
+dialogs.term:clear()
+dialogs.term:move(2,2)
+dialogs.term:puts(text)
 
-form.term:clear()
-form.term:move(2,2)
-form.term:puts(text)
+progress.max=100
+progress.term=dialogs.term
+dialog.close=dialogs.generic_close
+dialog.set_max=dialogs.generic_setmax
 
-dialog.max=max
-dialog.add=function(self, val)
-	form.term:move(2,3)
-	form.term:puts(string.format("%d", max-val))
+progress.add=function(self, val)
+self.term:move(2,3)
+self.term:puts(string.format("%d", self.max - val))
 end
 
-return dialog
+return progress
 end
 
 
@@ -873,6 +900,23 @@ then
 	dialog=YadObjectCreate()
 else
 	dialog=TextConsoleObjectCreate(dialog)
+end
+
+
+-- these are generic functions that are added to dialogs when
+-- they are created. 'setmax' is only added to progress dialogs
+-- 'close' is added to all dialog types
+dialog.generic_close=function(self)
+if self.S ~= nil
+then
+process.kill(tonumber(self.S:getvalue("PeerPID")))
+self.S:close()
+end
+end
+
+dialog.generic_setmax=function(self, max)
+self.max=tonumber(max)
+print("SETMAX: "..max)
 end
 
 return dialog

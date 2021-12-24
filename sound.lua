@@ -52,6 +52,8 @@ end
 function ALSALoadSoundCards(devices)
 local S, str, pos, name, toks, tok, devnum
 
+AddSoundDevice(devices, "alsa", -1, "default", 1)
+AddSoundDevice(devices, "alsa", -1, "default", 2)
 S=stream.STREAM("/proc/asound/cards", "r");
 str=S:readln()
 while str ~= nil

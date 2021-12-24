@@ -1,5 +1,5 @@
 
 
 all:
-	cat includes.lua common.lua dialog-types.lua codecs.lua sound.lua main.lua > screenrecord.lua
+	cat includes.lua common.lua config.lua dialog-types.lua codecs.lua sound.lua log.lua main.lua > screenrecord.lua
 	chmod a+x screenrecord.lua

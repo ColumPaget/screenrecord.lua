@@ -22,6 +22,87 @@ if tonumber(str) > 0 then return true end
 return false
 end
 
+function PrintHelp()
+print("screencast.lua version 1.0")
+print("usage:")
+print("  lua screencast.lua [options]")
+print("options:")
+print("  -ui <type>          specify ui type to use. Values are qarma, zenity, yad or text")
+print("  -size <x.y>         specify recording window size")
+print("  -fps <value>        frames per second to record at")
+print("  -outdir <path>      path to directory to store recordings in")
+print("  -o <path>           full path to recording file to create")
+print("  -?                  this help")
+print("  -help               this help")
+print("  --help              this help")
+
+os.exit()
+end
+
+
+function ParseCommandLine(config)
+local i,item
+
+for i,item in ipairs(arg)
+do
+if item == "-?" or item == "--help" or item == "-help"
+then 
+	PrintHelp() 
+elseif item == "-ui"
+then
+ config.driver=arg[i+1]
+ arg[i+1]=""
+elseif item == "-size"
+then
+ config.size=arg[i+1]
+ arg[i+1]=""
+elseif item == "-fps"
+then
+ config.fps=arg[i+1]
+ arg[i+1]=""
+elseif item == "-codec"
+then
+ config.codec=arg[i+1]
+ arg[i+1]=""
+elseif item == "-outdir"
+then
+ config.destdir=arg[i+1]
+ arg[i+1]=""
+elseif item == "-o"
+then
+ config.output_path=arg[i+1]
+ arg[i+1]=""
+end
+end
+
+return config
+end
+
+
+function InitConfig()
+local config={}
+
+config.follow_mouse="no"
+config.fps=30
+config.size=""
+config.codec="mp4 (h264/aac)"
+
+ParseCommandLine(config)
+
+if strutil.strlen(config.output_path) == 0
+then
+config.output_path=""
+if strutil.strlen(config.destdir) > 0 then config.output_path=config.destdir.."/" end
+config.output_path=config.output_path .. sys.hostname() .. "-" .. time.format("%Y-%M-%YT%H-%M-%S")
+end
+
+print("OUT: "..config.output_path)
+return config
+end
+
+
+
+
 function FormItemAdd(form, item_type, item_name, item_cmd_args, item_description)
 local form_item={}
 
@@ -151,8 +232,8 @@ function QarmaInfoDialog(dialogs, text, width, height)
 local S, str
 
 str="cmd:qarma --info --text='"..text.."'"
-if width > 0 then str=str.." --width "..tostring(width) end
-if height > 0 then str=str.." --height "..tostring(height) end
+if width ~= nil and width > 0 then str=str.." --width "..tostring(width) end
+if height ~= nil and height > 0 then str=str.." --height "..tostring(height) end
 S=stream.STREAM(str)
 str=S:readdoc()
 S:close()
@@ -219,40 +300,46 @@ end
 
 
 function QarmaLogDialog(form, text, width, height)
-local S, str
+local str
 local dialog={}
 
-str="cmd:qarma --text-info --text='"..text.."'"
-if width > 0 then str=str.." --width "..tostring(width) end
-if height > 0 then str=str.." --height "..tostring(height) end
+str="cmd:qarma --text-info --title='"..text.."'"
+if width ~= nil and width > 0 then str=str.." --width "..tostring(width) end
+if height ~= nil and height > 0 then str=str.." --height "..tostring(height) end
 
-dialog.S=stream.STREAM(str)
+dialog.S=stream.STREAM(str, "rw")
+dialog.close=dialogs.generic_close
 
 dialog.add=function(dialog, text)
 if text ~= nil then dialog.S:writeln(text.."\n") end
 dialog.S:flush()
 end
 
-
 return dialog
 end
 
 
 
-function QarmaProgressDialog(dialogs, text, max, close_on_full)
-local str, S
+function QarmaProgressDialog(dialogs, title, text, width, height)
+local str
 local dialog={}
 
-str="cmd:qarma --progress --text='".. text.."' "
-if close_on_full == true then str=str.."--auto-close --auto-kill" end
+str="cmd:qarma --progress --cancel-label='Done' "
+if strutil.strlen(text) > 0 then str=str.."--text='" .. text .. "' " end
+if strutil.strlen(title) > 0 then str=str.."--title='".. title .."' " end
+if width ~= nil and width > 0 then str=str.." --width "..tostring(width) end
+if height ~= nil and height > 0 then str=str.." --height "..tostring(height) end
 
-dialog.max=max
-dialog.S=stream.STREAM(str)
+
+dialog.S=stream.STREAM(str, "rw")
+dialog.max=100
+dialog.close=dialogs.generic_close
+dialog.set_max=dialogs.generic_setmax
 
 dialog.add=function(self, val, title)
 local perc
 
-	if val > 0 then perc=math.floor(val * 100 / max)
+	if val > 0 then perc=math.floor(val * 100 / self.max)
 	else perc=val
 	end
 
@@ -332,7 +419,7 @@ return FormParseOutput(form, str)
 end
 
 
-function ZenityYesNoDialog(dialogs, text, flags)
+function ZenityYesNoDialog(dialog, text, flags)
 local S, str, pid
 
 str="cmd:zenity --question --text='"..text.."'"
@@ -348,18 +435,21 @@ return "no"
 end
 
 
-function ZenityInfoDialog(dialogs, text)
+function ZenityInfoDialog(dialog, text)
 local S, str
 
 str="cmd:zenity --info --text='"..text.."'"
 S=stream.STREAM(str)
+if S ~= nil
+then
 str=S:readdoc()
 S:close()
+end
 
 end
 
 
-function ZenityTextEntryDialog(dialogs, text)
+function ZenityTextEntryDialog(dialog, text)
 local S, str
 
 str="cmd:zenity --entry --text='"..text.."'"
@@ -371,7 +461,7 @@ return str
 end
 
 
-function ZenityFileSelectionDialog(dialogs, text)
+function ZenityFileSelectionDialog(dialog, text)
 local S, str
 
 str="cmd:zenity --file-selection --text='"..text.."'"
@@ -383,7 +473,7 @@ return str
 end
 
 
-function ZenityCalendarDialog(dialogs, text)
+function ZenityCalendarDialog(dialog, text)
 local S, str
 
 str="cmd:zenity --calendar --text='"..text.."'"
@@ -395,7 +485,7 @@ return str
 end
 
 
-function ZenityMenuDialog(dialogs, text, options)
+function ZenityMenuDialog(dialog, text, options)
 local S, str, toks, tok
 
 str="cmd:zenity --list --hide-header --text='"..text.."' "
@@ -416,26 +506,33 @@ return str
 end
 
 
-function ZenityProgressDialog(dialogs, text, max, close_on_full)
+function ZenityProgressDialog(dialog, title, text, width, height)
 local str, S
 local dialog={}
 
-str="cmd:zenity --progress --text='".. text.."' "
-if close_on_full==true then str=str.." --auto-close --auto-kill" end
+str="cmd:zenity --progress --title='" .. title .. "' --text='".. text.."' "
+if width ~= nil and width > 0 then str=str.." --width "..tostring(width) end
+if height ~= nil and height > 0 then str=str.." --height "..tostring(height) end
 
-dialog.max=max
-dialog.S=stream.STREAM(str)
+dialog.max=100
+dialog.S=stream.STREAM(str, "rw")
+dialog.close=dialogs.generic_close
+dialog.set_max=dialogs.generic_setmax
 
-dialog.add=function(self, val)
+
+dialog.add=function(self, val, title)
 local perc
 
-	if val > 0 then perc=math.floor(val * 100 / max)
+	if val > 0 then perc=math.floor(val * 100 / self.max)
 	else perc=val
 	end
 
+	if title ~= nil then self.S:writeln("# "..tostring(title).."\r\n") end
 	self.S:writeln(string.format("%d\r\n", perc))
 	self.S:flush()
 end
+
+
 
 return dialog
 end
@@ -448,7 +545,12 @@ local S, str
 local dialog={}
 
 str="cmd:zenity --text-info --auto-scroll --title='"..text.."'"
-dialog.S=stream.STREAM(str)
+if width ~= nil and width > 0 then str=str.." --width "..tostring(width) end
+if height ~= nil and height > 0 then str=str.." --height "..tostring(height) end
+
+dialog.S=stream.STREAM(str, "rw")
+dialog.close=dialogs.generic_close
+
 dialog.add=function(self, text)
 if text ~= nil then self.S:writeln(text.."\n") end
 self.S:flush()
@@ -531,7 +633,7 @@ end
 
 
 
-function YadYesNoDialog(dialogs, text, flags)
+function YadYesNoDialog(dialog, text, flags)
 local S, str, pid
 
 str="cmd:yad --question --text='"..text.."'"
@@ -547,7 +649,7 @@ return "no"
 end
 
 
-function YadInfoDialog(dialogs, text)
+function YadInfoDialog(dialog, text)
 local S, str
 
 str="cmd:yad --text='"..text.."'"
@@ -558,7 +660,7 @@ S:close()
 end
 
 
-function YadTextEntryDialog(dialogs, text)
+function YadTextEntryDialog(dialog, text)
 local S, str
 
 str="cmd:yad --entry --text='"..text.."'"
@@ -571,7 +673,7 @@ end
 
 
 
-function YadFileSelectionDialog(dialogs, text)
+function YadFileSelectionDialog(dialog, text)
 local S, str
 
 str="cmd:yad --file-selection --text='"..text.."'"
@@ -583,7 +685,7 @@ return str
 end
 
 
-function YadCalendarDialog(dialogs, text)
+function YadCalendarDialog(dialog, text)
 local S, str
 
 str="cmd:yad --calendar --text='"..text.."'"
@@ -616,7 +718,7 @@ end
 
 
 
-function YadMenuDialog(dialogs, text, options)
+function YadMenuDialog(dialog, text, options)
 local S, str, toks, tok
 
 str="cmd:yad --list --no-headers --column='c1' " 
@@ -638,7 +740,7 @@ end
 
 
 
-function YadFormObjectCreate(dialogs, title)
+function YadFormObjectCreate(dialog, title)
 local form={}
 
 form.title=title
@@ -670,7 +772,7 @@ return dialogs
 end
 
 
-function TextConsoleInfoDialog(dialogs, text)
+function TextConsoleInfoDialog(dialog, text)
 
 end
 
@@ -690,14 +792,14 @@ end
 
 
 
-function TextConsoleFileSelectionDialog(dialogs, text)
+function TextConsoleFileSelectionDialog(dialog, text)
 local str
 
 return str
 end
 
 
-function TextConsoleCalendarDialog(dialogs, text)
+function TextConsoleCalendarDialog(dialog, text)
 local str
 
 return str
@@ -722,7 +824,7 @@ dialog.term=form.term
 dialog.term:clear()
 
 dialog.add=TextConsoleLogDialogAddText
-dialog.term:bar("PRESS ANY KEY TO END RECORDING")
+dialog.term:bar(text)
 
 return dialog
 end
@@ -754,22 +856,25 @@ end
 
 
 
-function TextConsoleProgressDialog(dialogs, text, max, close_on_full)
+function TextConsoleProgressDialog(dialogs, text, close_on_full)
 local str, S
-local dialog={}
+local progress={}
 
+dialogs.term:clear()
+dialogs.term:move(2,2)
+dialogs.term:puts(text)
 
-form.term:clear()
-form.term:move(2,2)
-form.term:puts(text)
+progress.max=100
+progress.term=dialogs.term
+dialog.close=dialogs.generic_close
+dialog.set_max=dialogs.generic_setmax
 
-dialog.max=max
-dialog.add=function(self, val)
-	form.term:move(2,3)
-	form.term:puts(string.format("%d", max-val))
+progress.add=function(self, val)
+self.term:move(2,3)
+self.term:puts(string.format("%d", self.max - val))
 end
 
-return dialog
+return progress
 end
 
 
@@ -897,6 +1002,23 @@ then
 	dialog=YadObjectCreate()
 else
 	dialog=TextConsoleObjectCreate(dialog)
+end
+
+
+-- these are generic functions that are added to dialogs when
+-- they are created. 'setmax' is only added to progress dialogs
+-- 'close' is added to all dialog types
+dialog.generic_close=function(self)
+if self.S ~= nil
+then
+process.kill(tonumber(self.S:getvalue("PeerPID")))
+self.S:close()
+end
+end
+
+dialog.generic_setmax=function(self, max)
+self.max=tonumber(max)
+print("SETMAX: "..max)
 end
 
 return dialog
@@ -1077,6 +1199,8 @@ end
 function ALSALoadSoundCards(devices)
 local S, str, pos, name, toks, tok, devnum
 
+AddSoundDevice(devices, "alsa", -1, "default", 1)
+AddSoundDevice(devices, "alsa", -1, "default", 2)
 S=stream.STREAM("/proc/asound/cards", "r");
 str=S:readln()
 while str ~= nil
@@ -1127,6 +1251,39 @@ local devices={}
 OSSLoadSoundCards(devices)
 ALSALoadSoundCards(devices)
 return devices
+end
+
+
+function ProcessLogInit()
+local log={}
+
+log.lines={}
+
+log.add=function(self, str)
+local i
+
+for i=1,10,1
+do
+	if log.lines[i+1] ~= nil then log.lines[i]=log.lines[i+1] end
+	log.lines[10]=str
+end
+
+end
+
+
+log.display=function(self)
+local i, gui
+local str=""
+
+gui=dialogs:log("Error Report: ffmpeg exited. last lines were...", 600, 400)
+for i=1,10,1
+do
+	gui:add(log.lines[i])
+end
+
+end
+
+return log
 end
 
 
@@ -1211,21 +1368,28 @@ end
 function DoCountdown(count)
 local i, str, S, perc
 
-dialog=dialogs:progress("recording in:", count, true)
+dialog=dialogs:progress("recording in:")
+dialog:set_max(count-1)
 for i=0,count,1
 do
 	dialog:add(i, i)
 	time.sleep(1)
 end
 
+dialog:close()
 end
 
 
 
-function AudioRecordDialog()
+function AudioRecordDialog(record_config)
 local dialog={}
+local str
 
-dialog=QarmaProgressDialog("level:", 100)
+str="recording start: "..time.format("%H:%M:%S") .."   codec: "..record_config.codec .."\n"
+str=str.."   filename: " .. filesys.basename(record_config.output_path) ..  "\n"
+str=str.."audio from: "..record_config.audio.."\n"
+str=str.."video size: "..record_config.size
+dialog=dialogs:progress("Close this window to end Recording", str, 400, 200)
 dialog.add_level=dialog.add
 
 dialog.add=function(self, str)
@@ -1240,7 +1404,8 @@ if tok=="M:" then dB=tonumber(toks:next()) end
 tok=toks:next()
 end
 
-self:add_level(100 + dB)
+str=strutil.toMetric(filesys.size(record_config.output_path))
+self:add_level(100 + dB, str)
 
 end
 
@@ -1271,7 +1436,13 @@ local audio_filter=""
 
 	if audio_type == "alsa"
 	then
+		if tonumber(devnum) > -1
+		then
 		audio="-f " .. audio_type .. " -thread_queue_size 1024 -ac ".. channels .. " -i hw:" .. devnum.." "
+		else
+		audio="-f " .. audio_type .. " -thread_queue_size 1024 -ac ".. channels .. " -i " .. devname.." "
+		end
+		
 	elseif audio_type == "oss"
 	then
 		audio="-f " .. audio_type .. " -thread_queue_size 1024 -ac ".. channels .. " -i " .. devname.." "
@@ -1279,6 +1450,7 @@ local audio_filter=""
 
 	if config["noise reduction"] == true then audio_filter="-af highpass=f=200,lowpass=f=3000 " end
 
+	audio_filter=audio_filter .. " -filter_complex ebur128 "
 	return audio, audio_filter
 end
 
@@ -1298,7 +1470,10 @@ local cmdS, S, poll, dialog, str, Xdisplay, codec
 local gui
 
 Xdisplay=process.getenv("DISPLAY") .. " "
-if config.audio ~= "none" then audio,audio_filter=BuildAudioConfig(config) end
+if config.audio ~= "none"
+then 
+audio,audio_filter=BuildAudioConfig(config) 
+end
 
 if config["show capture region"] == true then show_region="-show_region 1 " end
 --if config["show pointer"] == false then show_pointer="-draw_mouse 0 " end
@@ -1310,24 +1485,20 @@ codec=codecs:get(config.codec)
 if config["size"]=="no video" or codec.video==false
 then
 	--Audio only
-	--str="ffmpeg -nostats -filter_complex ebur128  -thread_queue_size 1024 " .. audio .. audio_filter .. codec.cmdline .. config.output_path .. codec.extn
-	str="ffmpeg -filter_complex ebur128 -thread_queue_size 1024 " .. audio .. audio_filter .. codec.cmdline .. config.output_path .. codec.extn
-	gui=AudioRecordDialog(config)
+	str="ffmpeg -nostats " .. audio .. audio_filter .. codec.cmdline .. config.output_path .. codec.extn
 else
 	--Audio and Video (Default)
-	str="ffmpeg -nostats -s " .. config["size"] .. " -r " .. config["fps"] .. " ".. show_pointer.. show_region .. follow_mouse .. " -f x11grab -thread_queue_size 1024 " .. " -i " .. Xdisplay .. " ".. audio .. audio_filter .. codec.cmdline .. config.output_path .. codec.extn
-
-
-dialog=NewDialog(config)
-gui=dialog:log("Close This Window To End Recording", 800, 400)
-gui:add("LAUNCH: "..str)
+	str="ffmpeg -nostats -s " .. config["size"] .. " -r " .. config["fps"] .. " ".. show_pointer.. show_region .. follow_mouse .. " -f x11grab " .. " -i " .. Xdisplay .. audio .. audio_filter .. codec.cmdline .. config.output_path .. codec.extn
 end
 
+gui=AudioRecordDialog(config)
+filesys.mkdirPath(config.output_path)
 cmdS=stream.STREAM("cmd:" .. str, "rw +stderr noshell")
 poll=stream.POLL_IO()
-poll:add(cmdS)
 poll:add(gui.S)
+poll:add(cmdS)
 
+log=ProcessLogInit()
 time.usleep(30)
 
 while true
@@ -1348,16 +1519,20 @@ do
 
 		if str==nil 
 		then
-			print("ERROR: ffmepg closed!")
+			gui:close()
+			log:display()
 			break
 		else
 			str=strutil.trim(str)
-			gui:add(str)
+			-- this output can be used to get an 'audio level' for a vu meter
+			if string.sub(str, 1, 15)=="[Parsed_ebur128" then gui:add(str)
+			else log:add(str)
+			end
 		end
 	elseif gui.S ~= nil and S == gui.S
 	then
 		str=gui.S:readln()
-		-- anything from the logging window means the window has been closed
+		-- anything from the gui window means the window has been closed
 		break
 	end
 	end
@@ -1366,72 +1541,19 @@ end
 process.kill(tonumber(cmdS:getvalue("PeerPID")))
 cmdS:close()
 
-if dialog.term ~= nil
+if gui.term ~= nil
 then
-dialog.term:reset()
-dialog.term:clear()
-end
-
-end
-
-
-function PrintHelp()
-print("screencast.lua version 1.0")
-os.exit()
+gui.term:reset()
+gui.term:clear()
 end
 
 
-function ParseCommandLine(config)
-local i,item
-
-for i,item in ipairs(arg)
-do
-if item == "-?" or item == "--help" or item == "-help"
-then 
-	PrintHelp() 
-elseif item == "-ui"
-then
- config.driver=arg[i+1]
- arg[i+1]=""
-elseif item == "-size"
-then
- config.size=arg[i+1]
- arg[i+1]=""
-elseif item == "-fps"
-then
- config.fps=arg[i+1]
- arg[i+1]=""
-elseif item == "-codec"
-then
- config.codec=arg[i+1]
- arg[i+1]=""
-elseif item == "-o"
-then
- config.output_path=arg[i+1]
- arg[i+1]=""
-end
 end
 
-return config
-end
-
-
-function InitConfig()
-local config={}
-
-config.output_path=sys.hostname() .. "-" .. time.format("%Y-%M-%YT%H-%M-%S")
-config.follow_mouse="no"
-config.fps=30
-config.size=""
-config.codec="mp4 (h264/aac)"
-
-return config
-end
 
 
 config=InitConfig()
 codecs=CodecsInit()
-ParseCommandLine(config)
 devices=GetSoundDevices()
 dialogs=NewDialog(config)
 

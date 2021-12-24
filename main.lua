@@ -81,21 +81,28 @@ end
 function DoCountdown(count)
 local i, str, S, perc
 
-dialog=dialogs:progress("recording in:", count, true)
+dialog=dialogs:progress("recording in:")
+dialog:set_max(count-1)
 for i=0,count,1
 do
 	dialog:add(i, i)
 	time.sleep(1)
 end
 
+dialog:close()
 end
 
 
 
-function AudioRecordDialog()
+function AudioRecordDialog(record_config)
 local dialog={}
+local str
 
-dialog=QarmaProgressDialog("level:", 100)
+str="recording start: "..time.format("%H:%M:%S") .."   codec: "..record_config.codec .."\n"
+str=str.."   filename: " .. filesys.basename(record_config.output_path) ..  "\n"
+str=str.."audio from: "..record_config.audio.."\n"
+str=str.."video size: "..record_config.size
+dialog=dialogs:progress("Close this window to end Recording", str, 400, 200)
 dialog.add_level=dialog.add
 
 dialog.add=function(self, str)
@@ -110,7 +117,8 @@ if tok=="M:" then dB=tonumber(toks:next()) end
 tok=toks:next()
 end
 
-self:add_level(100 + dB)
+str=strutil.toMetric(filesys.size(record_config.output_path))
+self:add_level(100 + dB, str)
 
 end
 
@@ -141,7 +149,13 @@ local audio_filter=""
 
 	if audio_type == "alsa"
 	then
+		if tonumber(devnum) > -1
+		then
 		audio="-f " .. audio_type .. " -thread_queue_size 1024 -ac ".. channels .. " -i hw:" .. devnum.." "
+		else
+		audio="-f " .. audio_type .. " -thread_queue_size 1024 -ac ".. channels .. " -i " .. devname.." "
+		end
+		
 	elseif audio_type == "oss"
 	then
 		audio="-f " .. audio_type .. " -thread_queue_size 1024 -ac ".. channels .. " -i " .. devname.." "
@@ -149,6 +163,7 @@ local audio_filter=""
 
 	if config["noise reduction"] == true then audio_filter="-af highpass=f=200,lowpass=f=3000 " end
 
+	audio_filter=audio_filter .. " -filter_complex ebur128 "
 	return audio, audio_filter
 end
 
@@ -168,7 +183,10 @@ local cmdS, S, poll, dialog, str, Xdisplay, codec
 local gui
 
 Xdisplay=process.getenv("DISPLAY") .. " "
-if config.audio ~= "none" then audio,audio_filter=BuildAudioConfig(config) end
+if config.audio ~= "none"
+then 
+audio,audio_filter=BuildAudioConfig(config) 
+end
 
 if config["show capture region"] == true then show_region="-show_region 1 " end
 --if config["show pointer"] == false then show_pointer="-draw_mouse 0 " end
@@ -180,24 +198,20 @@ codec=codecs:get(config.codec)
 if config["size"]=="no video" or codec.video==false
 then
 	--Audio only
-	--str="ffmpeg -nostats -filter_complex ebur128  -thread_queue_size 1024 " .. audio .. audio_filter .. codec.cmdline .. config.output_path .. codec.extn
-	str="ffmpeg -filter_complex ebur128 -thread_queue_size 1024 " .. audio .. audio_filter .. codec.cmdline .. config.output_path .. codec.extn
-	gui=AudioRecordDialog(config)
+	str="ffmpeg -nostats " .. audio .. audio_filter .. codec.cmdline .. config.output_path .. codec.extn
 else
 	--Audio and Video (Default)
-	str="ffmpeg -nostats -s " .. config["size"] .. " -r " .. config["fps"] .. " ".. show_pointer.. show_region .. follow_mouse .. " -f x11grab -thread_queue_size 1024 " .. " -i " .. Xdisplay .. " ".. audio .. audio_filter .. codec.cmdline .. config.output_path .. codec.extn
-
-
-dialog=NewDialog(config)
-gui=dialog:log("Close This Window To End Recording", 800, 400)
-gui:add("LAUNCH: "..str)
+	str="ffmpeg -nostats -s " .. config["size"] .. " -r " .. config["fps"] .. " ".. show_pointer.. show_region .. follow_mouse .. " -f x11grab " .. " -i " .. Xdisplay .. audio .. audio_filter .. codec.cmdline .. config.output_path .. codec.extn
 end
 
+gui=AudioRecordDialog(config)
+filesys.mkdirPath(config.output_path)
 cmdS=stream.STREAM("cmd:" .. str, "rw +stderr noshell")
 poll=stream.POLL_IO()
-poll:add(cmdS)
 poll:add(gui.S)
+poll:add(cmdS)
 
+log=ProcessLogInit()
 time.usleep(30)
 
 while true
@@ -218,16 +232,20 @@ do
 
 		if str==nil 
 		then
-			print("ERROR: ffmepg closed!")
+			gui:close()
+			log:display()
 			break
 		else
 			str=strutil.trim(str)
-			gui:add(str)
+			-- this output can be used to get an 'audio level' for a vu meter
+			if string.sub(str, 1, 15)=="[Parsed_ebur128" then gui:add(str)
+			else log:add(str)
+			end
 		end
 	elseif gui.S ~= nil and S == gui.S
 	then
 		str=gui.S:readln()
-		-- anything from the logging window means the window has been closed
+		-- anything from the gui window means the window has been closed
 		break
 	end
 	end
@@ -236,72 +254,19 @@ end
 process.kill(tonumber(cmdS:getvalue("PeerPID")))
 cmdS:close()
 
-if dialog.term ~= nil
+if gui.term ~= nil
 then
-dialog.term:reset()
-dialog.term:clear()
-end
-
-end
-
-
-function PrintHelp()
-print("screencast.lua version 1.0")
-os.exit()
+gui.term:reset()
+gui.term:clear()
 end
 
 
-function ParseCommandLine(config)
-local i,item
-
-for i,item in ipairs(arg)
-do
-if item == "-?" or item == "--help" or item == "-help"
-then 
-	PrintHelp() 
-elseif item == "-ui"
-then
- config.driver=arg[i+1]
- arg[i+1]=""
-elseif item == "-size"
-then
- config.size=arg[i+1]
- arg[i+1]=""
-elseif item == "-fps"
-then
- config.fps=arg[i+1]
- arg[i+1]=""
-elseif item == "-codec"
-then
- config.codec=arg[i+1]
- arg[i+1]=""
-elseif item == "-o"
-then
- config.output_path=arg[i+1]
- arg[i+1]=""
-end
 end
 
-return config
-end
-
-
-function InitConfig()
-local config={}
-
-config.output_path=sys.hostname() .. "-" .. time.format("%Y-%M-%YT%H-%M-%S")
-config.follow_mouse="no"
-config.fps=30
-config.size=""
-config.codec="mp4 (h264/aac)"
-
-return config
-end
 
 
 config=InitConfig()
 codecs=CodecsInit()
-ParseCommandLine(config)
 devices=GetSoundDevices()
 dialogs=NewDialog(config)
 
