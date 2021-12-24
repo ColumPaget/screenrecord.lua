@@ -96,7 +96,6 @@ if strutil.strlen(config.destdir) > 0 then config.output_path=config.destdir.."/
 config.output_path=config.output_path .. sys.hostname() .. "-" .. time.format("%Y-%M-%YT%H-%M-%S")
 end
 
-print("OUT: "..config.output_path)
 return config
 end
 
@@ -204,7 +203,7 @@ do
 	str=str..config_item.cmd_args.. " "
 end
 
-S=stream.STREAM("cmd:"..str, "")
+S=stream.STREAM("cmd:"..str, "rw setsid")
 str=strutil.trim(S:readdoc())
 S:close()
 
@@ -216,7 +215,7 @@ function QarmaYesNoDialog(dialogs, text, flags)
 local S, str, pid
 
 str="cmd:qarma --question --text='"..text.."'"
-S=stream.STREAM(str)
+S=stream.STREAM(str, "rw setsid")
 pid=S:getvalue("PeerPID")
 str=S:readdoc()
 S:close()
@@ -234,7 +233,7 @@ local S, str
 str="cmd:qarma --info --text='"..text.."'"
 if width ~= nil and width > 0 then str=str.." --width "..tostring(width) end
 if height ~= nil and height > 0 then str=str.." --height "..tostring(height) end
-S=stream.STREAM(str)
+S=stream.STREAM(str, "rw setsid")
 str=S:readdoc()
 S:close()
 
@@ -245,7 +244,7 @@ function QarmaTextEntryDialog(dialogs, text)
 local S, str
 
 str="cmd:qarma --entry"
-S=stream.STREAM(str)
+S=stream.STREAM(str, "rw setsid")
 str=S:readdoc()
 S:close()
 
@@ -257,7 +256,7 @@ function QarmaFileSelectionDialog(dialogs, text)
 local S, str
 
 str="cmd:qarma --file-selection --text='"..text.."'"
-S=stream.STREAM(str)
+S=stream.STREAM(str, "rw setsid")
 str=S:readdoc()
 S:close()
 
@@ -269,7 +268,7 @@ function QarmaCalendarDialog(dialogs, text)
 local S, str
 
 str="cmd:qarma --calendar --text='"..text.."'"
-S=stream.STREAM(str)
+S=stream.STREAM(str, "rw setsid")
 str=S:readdoc()
 S:close()
 
@@ -290,7 +289,7 @@ str=str.. "'" .. tok .."' "
 tok=toks:next()
 end
 
-S=stream.STREAM(str)
+S=stream.STREAM(str, "rw setsid")
 str=S:readdoc()
 S:close()
 
@@ -307,7 +306,7 @@ str="cmd:qarma --text-info --title='"..text.."'"
 if width ~= nil and width > 0 then str=str.." --width "..tostring(width) end
 if height ~= nil and height > 0 then str=str.." --height "..tostring(height) end
 
-dialog.S=stream.STREAM(str, "rw")
+dialog.S=stream.STREAM(str, "rw setsid")
 dialog.close=dialogs.generic_close
 
 dialog.add=function(dialog, text)
@@ -331,7 +330,7 @@ if width ~= nil and width > 0 then str=str.." --width "..tostring(width) end
 if height ~= nil and height > 0 then str=str.." --height "..tostring(height) end
 
 
-dialog.S=stream.STREAM(str, "rw")
+dialog.S=stream.STREAM(str, "rw setsid")
 dialog.max=100
 dialog.close=dialogs.generic_close
 dialog.set_max=dialogs.generic_setmax
@@ -411,7 +410,7 @@ do
 	str=str..config_item.cmd_args.. " "
 end
 
-S=stream.STREAM("cmd:"..str, "")
+S=stream.STREAM("cmd:"..str, "rw setsid")
 str=strutil.trim(S:readdoc())
 S:close()
 
@@ -423,7 +422,7 @@ function ZenityYesNoDialog(dialog, text, flags)
 local S, str, pid
 
 str="cmd:zenity --question --text='"..text.."'"
-S=stream.STREAM(str)
+S=stream.STREAM(str, "rw setsid")
 pid=S:getvalue("PeerPID")
 str=S:readdoc()
 S:close()
@@ -439,7 +438,7 @@ function ZenityInfoDialog(dialog, text)
 local S, str
 
 str="cmd:zenity --info --text='"..text.."'"
-S=stream.STREAM(str)
+S=stream.STREAM(str, "rw setsid")
 if S ~= nil
 then
 str=S:readdoc()
@@ -453,7 +452,7 @@ function ZenityTextEntryDialog(dialog, text)
 local S, str
 
 str="cmd:zenity --entry --text='"..text.."'"
-S=stream.STREAM(str)
+S=stream.STREAM(str, "rw setsid")
 str=S:readdoc()
 S:close()
 
@@ -465,7 +464,7 @@ function ZenityFileSelectionDialog(dialog, text)
 local S, str
 
 str="cmd:zenity --file-selection --text='"..text.."'"
-S=stream.STREAM(str)
+S=stream.STREAM(str, "rw setsid")
 str=S:readdoc()
 S:close()
 
@@ -477,7 +476,7 @@ function ZenityCalendarDialog(dialog, text)
 local S, str
 
 str="cmd:zenity --calendar --text='"..text.."'"
-S=stream.STREAM(str)
+S=stream.STREAM(str, "rw setsid")
 str=S:readdoc()
 S:close()
 
@@ -498,7 +497,7 @@ str=str.. "'" .. tok .."' "
 tok=toks:next()
 end
 
-S=stream.STREAM(str)
+S=stream.STREAM(str, "rw setsid")
 str=S:readdoc()
 S:close()
 
@@ -510,12 +509,13 @@ function ZenityProgressDialog(dialog, title, text, width, height)
 local str, S
 local dialog={}
 
-str="cmd:zenity --progress --title='" .. title .. "' --text='".. text.."' "
+str="cmd:zenity --progress --title='" .. title .. "' "
+if strutil.strlen(text) > 0 then str=str.."--text='".. text.."' " end
 if width ~= nil and width > 0 then str=str.." --width "..tostring(width) end
 if height ~= nil and height > 0 then str=str.." --height "..tostring(height) end
 
 dialog.max=100
-dialog.S=stream.STREAM(str, "rw")
+dialog.S=stream.STREAM(str, "rw setsid")
 dialog.close=dialogs.generic_close
 dialog.set_max=dialogs.generic_setmax
 
@@ -548,7 +548,7 @@ str="cmd:zenity --text-info --auto-scroll --title='"..text.."'"
 if width ~= nil and width > 0 then str=str.." --width "..tostring(width) end
 if height ~= nil and height > 0 then str=str.." --height "..tostring(height) end
 
-dialog.S=stream.STREAM(str, "rw")
+dialog.S=stream.STREAM(str, "rw setsid")
 dialog.close=dialogs.generic_close
 
 dialog.add=function(self, text)
@@ -611,7 +611,7 @@ end
 
 
 function YadFormAddEntry(form, name)
-form:add("entry", name, "--add-entry='"..name.."'")
+form:add("entry", name, "--field='"..name..":EB'")
 end
 
 
@@ -624,7 +624,7 @@ do
 	str=str..config_item.cmd_args.. " "
 end
 
-S=stream.STREAM("cmd:"..str, "")
+S=stream.STREAM("cmd:"..str, "rw setsid")
 str=strutil.trim(S:readdoc())
 S:close()
 
@@ -637,7 +637,7 @@ function YadYesNoDialog(dialog, text, flags)
 local S, str, pid
 
 str="cmd:yad --question --text='"..text.."'"
-S=stream.STREAM(str)
+S=stream.STREAM(str, "rw setsid")
 pid=S:getvalue("PeerPID")
 str=S:readdoc()
 S:close()
@@ -653,7 +653,7 @@ function YadInfoDialog(dialog, text)
 local S, str
 
 str="cmd:yad --text='"..text.."'"
-S=stream.STREAM(str)
+S=stream.STREAM(str, "rw setsid")
 str=S:readdoc()
 S:close()
 
@@ -664,7 +664,7 @@ function YadTextEntryDialog(dialog, text)
 local S, str
 
 str="cmd:yad --entry --text='"..text.."'"
-S=stream.STREAM(str)
+S=stream.STREAM(str, "rw setsid")
 str=S:readdoc()
 S:close()
 
@@ -677,7 +677,7 @@ function YadFileSelectionDialog(dialog, text)
 local S, str
 
 str="cmd:yad --file-selection --text='"..text.."'"
-S=stream.STREAM(str)
+S=stream.STREAM(str, "rw setsid")
 str=S:readdoc()
 S:close()
 
@@ -689,7 +689,7 @@ function YadCalendarDialog(dialog, text)
 local S, str
 
 str="cmd:yad --calendar --text='"..text.."'"
-S=stream.STREAM(str)
+S=stream.STREAM(str, "rw setsid")
 str=S:readdoc()
 S:close()
 
@@ -698,10 +698,38 @@ end
 
 
 
-function YadLogDialogAddText(dialog, text)
-if text ~= nil then dialog.S:writeln(text.."\n") end
-dialog.S:flush()
+function YadProgressDialog(dialog, title, text, width, height)
+local str, S
+local dialog={}
+
+str="cmd:yad --progress --title='" .. title .. "' "
+if strutil.strlen(text) > 0 then str=str.."--text='".. text.."' " end
+if width ~= nil and width > 0 then str=str.." --width "..tostring(width) end
+if height ~= nil and height > 0 then str=str.." --height "..tostring(height) end
+
+dialog.max=100
+dialog.S=stream.STREAM(str, "rw setsid")
+dialog.close=dialogs.generic_close
+dialog.set_max=dialogs.generic_setmax
+
+dialog.add=function(self, val, title)
+local perc
+
+	if val > 0 then perc=math.floor(val * 100 / self.max)
+	else perc=val
+	end
+
+	if title ~= nil then self.S:writeln("# "..tostring(title).."\r\n") end
+	self.S:writeln(string.format("%d\r\n", perc))
+	self.S:flush()
 end
+
+
+
+return dialog
+end
+
+
 
 
 function YadLogDialog(form, text)
@@ -710,8 +738,12 @@ local dialog={}
 
 str="cmd:yad --text-info "
 if strutil.strlen(text) > 0 then str=str.." --text='"..text.."'" end
-dialog.S=stream.STREAM(str)
-dialog.add=YadLogDialogAddText
+dialog.S=stream.STREAM(str, "rw setsid")
+
+dialog.add=function(dialog, text)
+if text ~= nil then dialog.S:writeln(text.."\n") end
+dialog.S:flush()
+end
 
 return dialog
 end
@@ -730,7 +762,7 @@ str=str.. "'" .. tok .."' "
 tok=toks:next()
 end
 
-S=stream.STREAM(str)
+S=stream.STREAM(str, "rw setsid")
 str=S:readdoc()
 S:close()
 
@@ -765,7 +797,7 @@ dialogs.fileselect=YadFileSelectionDialog
 dialogs.calendar=YadCalendarDialog
 dialogs.log=YadLogDialog
 dialogs.menu=YadMenuDialog
---dialogs.progress=YadProgressDialog
+dialogs.progress=YadProgressDialog
 dialogs.form=YadFormObjectCreate
 
 return dialogs
@@ -1011,14 +1043,13 @@ end
 dialog.generic_close=function(self)
 if self.S ~= nil
 then
-process.kill(tonumber(self.S:getvalue("PeerPID")))
+process.kill(tonumber(0-self.S:getvalue("PeerPID")))
 self.S:close()
 end
 end
 
 dialog.generic_setmax=function(self, max)
 self.max=tonumber(max)
-print("SETMAX: "..max)
 end
 
 return dialog
@@ -1250,6 +1281,8 @@ local devices={}
 
 OSSLoadSoundCards(devices)
 ALSALoadSoundCards(devices)
+AddSoundDevice(devices, "pulseaudio", 0, "", 1)
+AddSoundDevice(devices, "pulseaudio", 0, "", 2)
 return devices
 end
 
@@ -1386,10 +1419,12 @@ local dialog={}
 local str
 
 str="recording start: "..time.format("%H:%M:%S") .."   codec: "..record_config.codec .."\n"
-str=str.."   filename: " .. filesys.basename(record_config.output_path) ..  "\n"
+str=str.."filename: " .. filesys.basename(record_config.output_path) ..  "\n"
 str=str.."audio from: "..record_config.audio.."\n"
 str=str.."video size: "..record_config.size
-dialog=dialogs:progress("Close this window to end Recording", str, 400, 200)
+dialog=dialogs:progress("Close this window to end Recording", str, 600, 200)
+dialog.start_time=time.secs()
+dialog.output_path=record_config.output_path
 dialog.add_level=dialog.add
 
 dialog.add=function(self, str)
@@ -1404,7 +1439,10 @@ if tok=="M:" then dB=tonumber(toks:next()) end
 tok=toks:next()
 end
 
-str=strutil.toMetric(filesys.size(record_config.output_path))
+str="start: "..time.formatsecs("%H:%M:%S", self.start_time) 
+str=str.."    duration: ".. time.formatsecs("%H:%M:%S", time.secs() - self.start_time)
+str=str.."    filesize: " .. strutil.toMetric(filesys.size(self.output_path)) .. "b \n"
+ 
 self:add_level(100 + dB, str)
 
 end
@@ -1446,6 +1484,9 @@ local audio_filter=""
 	elseif audio_type == "oss"
 	then
 		audio="-f " .. audio_type .. " -thread_queue_size 1024 -ac ".. channels .. " -i " .. devname.." "
+	elseif audio_type == "pulseaudio"
+	then
+		audio="-f pulse -thread_queue_size 1024 -ac ".. channels .." -i default "
 	end
 
 	if config["noise reduction"] == true then audio_filter="-af highpass=f=200,lowpass=f=3000 " end
@@ -1482,13 +1523,14 @@ if config["follow_mouse"] ~= "no" then follow_mouse="-follow_mouse "..config["fo
 
 codec=codecs:get(config.codec)
 
+config.output_path = config.output_path .. codec.extn
 if config["size"]=="no video" or codec.video==false
 then
 	--Audio only
-	str="ffmpeg -nostats " .. audio .. audio_filter .. codec.cmdline .. config.output_path .. codec.extn
+	str="ffmpeg -nostats " .. audio .. audio_filter .. codec.cmdline .. config.output_path
 else
 	--Audio and Video (Default)
-	str="ffmpeg -nostats -s " .. config["size"] .. " -r " .. config["fps"] .. " ".. show_pointer.. show_region .. follow_mouse .. " -f x11grab " .. " -i " .. Xdisplay .. audio .. audio_filter .. codec.cmdline .. config.output_path .. codec.extn
+	str="ffmpeg -nostats -s " .. config["size"] .. " -r " .. config["fps"] .. " ".. show_pointer.. show_region .. follow_mouse .. " -f x11grab " .. " -i " .. Xdisplay .. audio .. audio_filter .. codec.cmdline .. config.output_path
 end
 
 gui=AudioRecordDialog(config)
@@ -1562,7 +1604,7 @@ config=SetupDialog(config, devices)
 
 if config ~= nil
 then 
-if config.countdown ~= nil and tonumber(config.countdown) > 0 then DoCountdown(config.countdown) end
+if strutil.strlen(config.countdown) > 0 and tonumber(config.countdown) > 0 then DoCountdown(config.countdown) end
 DoRecord(config)
 end
 

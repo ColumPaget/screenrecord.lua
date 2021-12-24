@@ -103,5 +103,7 @@ local devices={}
 
 OSSLoadSoundCards(devices)
 ALSALoadSoundCards(devices)
+AddSoundDevice(devices, "pulseaudio", 0, "", 1)
+AddSoundDevice(devices, "pulseaudio", 0, "", 2)
 return devices
 end

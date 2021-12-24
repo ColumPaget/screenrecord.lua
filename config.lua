@@ -72,7 +72,6 @@ if strutil.strlen(config.destdir) > 0 then config.output_path=config.destdir.."/
 config.output_path=config.output_path .. sys.hostname() .. "-" .. time.format("%Y-%M-%YT%H-%M-%S")
 end
 
-print("OUT: "..config.output_path)
 return config
 end
 

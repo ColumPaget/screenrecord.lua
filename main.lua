@@ -99,10 +99,12 @@ local dialog={}
 local str
 
 str="recording start: "..time.format("%H:%M:%S") .."   codec: "..record_config.codec .."\n"
-str=str.."   filename: " .. filesys.basename(record_config.output_path) ..  "\n"
+str=str.."filename: " .. filesys.basename(record_config.output_path) ..  "\n"
 str=str.."audio from: "..record_config.audio.."\n"
 str=str.."video size: "..record_config.size
-dialog=dialogs:progress("Close this window to end Recording", str, 400, 200)
+dialog=dialogs:progress("Close this window to end Recording", str, 600, 200)
+dialog.start_time=time.secs()
+dialog.output_path=record_config.output_path
 dialog.add_level=dialog.add
 
 dialog.add=function(self, str)
@@ -117,7 +119,10 @@ if tok=="M:" then dB=tonumber(toks:next()) end
 tok=toks:next()
 end
 
-str=strutil.toMetric(filesys.size(record_config.output_path))
+str="start: "..time.formatsecs("%H:%M:%S", self.start_time) 
+str=str.."    duration: ".. time.formatsecs("%H:%M:%S", time.secs() - self.start_time)
+str=str.."    filesize: " .. strutil.toMetric(filesys.size(self.output_path)) .. "b \n"
+ 
 self:add_level(100 + dB, str)
 
 end
@@ -159,6 +164,9 @@ local audio_filter=""
 	elseif audio_type == "oss"
 	then
 		audio="-f " .. audio_type .. " -thread_queue_size 1024 -ac ".. channels .. " -i " .. devname.." "
+	elseif audio_type == "pulseaudio"
+	then
+		audio="-f pulse -thread_queue_size 1024 -ac ".. channels .." -i default "
 	end
 
 	if config["noise reduction"] == true then audio_filter="-af highpass=f=200,lowpass=f=3000 " end
@@ -195,13 +203,14 @@ if config["follow_mouse"] ~= "no" then follow_mouse="-follow_mouse "..config["fo
 
 codec=codecs:get(config.codec)
 
+config.output_path = config.output_path .. codec.extn
 if config["size"]=="no video" or codec.video==false
 then
 	--Audio only
-	str="ffmpeg -nostats " .. audio .. audio_filter .. codec.cmdline .. config.output_path .. codec.extn
+	str="ffmpeg -nostats " .. audio .. audio_filter .. codec.cmdline .. config.output_path
 else
 	--Audio and Video (Default)
-	str="ffmpeg -nostats -s " .. config["size"] .. " -r " .. config["fps"] .. " ".. show_pointer.. show_region .. follow_mouse .. " -f x11grab " .. " -i " .. Xdisplay .. audio .. audio_filter .. codec.cmdline .. config.output_path .. codec.extn
+	str="ffmpeg -nostats -s " .. config["size"] .. " -r " .. config["fps"] .. " ".. show_pointer.. show_region .. follow_mouse .. " -f x11grab " .. " -i " .. Xdisplay .. audio .. audio_filter .. codec.cmdline .. config.output_path
 end
 
 gui=AudioRecordDialog(config)
@@ -275,7 +284,7 @@ config=SetupDialog(config, devices)
 
 if config ~= nil
 then 
-if config.countdown ~= nil and tonumber(config.countdown) > 0 then DoCountdown(config.countdown) end
+if strutil.strlen(config.countdown) > 0 and tonumber(config.countdown) > 0 then DoCountdown(config.countdown) end
 DoRecord(config)
 end
 
