@@ -287,7 +287,7 @@ end
 config=InitConfig()
 codecs=CodecsInit()
 devices=GetSoundDevices()
-dialogs=NewDialog(config)
+dialogs=NewDialog(config.driver)
 
 config=SetupDialog(config, devices)
 

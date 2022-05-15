@@ -101,6 +101,30 @@ end
 
 
 
+function DialogsProcessCmd(cmd)
+local S, pid, str, status
+
+S=stream.STREAM(cmd)
+pid=S:getvalue("PeerPID")
+str=S:readdoc()
+if str ~= nil then str=strutil.trim(str) end
+S:close()
+
+
+status=process.childStatus(pid)
+while status == "running"
+do
+time.sleep(0)
+status=process.childStatus(pid)
+end
+
+--detect pressing 'cancel' and return nil
+if status ~= "exit:0" then return nil end
+
+return str
+end
+
+
 
 function FormItemAdd(form, item_type, item_name, item_cmd_args, item_description)
 local form_item={}
@@ -182,28 +206,37 @@ end
 
 function QarmaFormAddChoice(form, name, choices, description, selected)
 local combo_values
+
 combo_values=FormFormatChoices(choices, selected)
 form:add("choice", name, "--add-combo='"..name.."' --combo-values='".. combo_values .."'")
 end
 
-function QarmaFormAddEntry(form, name)
+function QarmaFormAddEntry(form, name, text)
 local str
 
 str="--add-entry='"..name.."'"
+if strutil.strlen(text) > 0 then str=str.." '"..text.."'" end
+
 form:add("entry", name, str)
 end
 
 
-function QarmaFormRun(form)
+function QarmaFormRun(form, width, height)
 local str, S
 
 str="qarma --forms --title='" .. form.title .."' "
+if strutil.strlen(form.text) > 0 then str=str.. "--text='" .. form.text .. "' " end
+if width ~= nil and width > 0 then str=str.." --width "..tostring(width) end
+if height ~= nil and height > 0 then str=str.." --height "..tostring(height) end
+
+
+
 for i,config_item in ipairs(form.config)
 do
 	str=str..config_item.cmd_args.. " "
 end
 
-S=stream.STREAM("cmd:"..str, "rw setsid")
+S=stream.STREAM("cmd:"..str, "")
 str=strutil.trim(S:readdoc())
 S:close()
 
@@ -211,75 +244,77 @@ return FormParseOutput(form, str)
 end
 
 
-function QarmaYesNoDialog(dialogs, text, flags)
+function QarmaYesNoDialog(text, flags)
 local S, str, pid
 
 str="cmd:qarma --question --text='"..text.."'"
-S=stream.STREAM(str, "rw setsid")
-pid=S:getvalue("PeerPID")
-str=S:readdoc()
-S:close()
+str=DialogsProcessCmd(str)
 
-str=process.waitStatus(tonumber(pid));
-
-if str=="exit:0" then return "yes" end
-return "no"
+if str == nil then return "no" end
+return "yes"
 end
 
 
-function QarmaInfoDialog(dialogs, text, width, height)
-local S, str
+function QarmaInfoDialog(text, title, width, height)
+local str
 
 str="cmd:qarma --info --text='"..text.."'"
 if width ~= nil and width > 0 then str=str.." --width "..tostring(width) end
 if height ~= nil and height > 0 then str=str.." --height "..tostring(height) end
-S=stream.STREAM(str, "rw setsid")
-str=S:readdoc()
-S:close()
+if strutil.strlen(title) > 0 then str=str.." --title '"..title.."'" end
 
+str=DialogsProcessCmd(str)
+-- str will be nil if user pressed cancel
+return str
 end
 
 
-function QarmaTextEntryDialog(dialogs, text)
-local S, str
+function QarmaTextEntryDialog(text, title)
+local str
 
 str="cmd:qarma --entry"
-S=stream.STREAM(str, "rw setsid")
-str=S:readdoc()
-S:close()
+if strutil.strlen(text) > 0 then str=str.." --text '"..text.."'" end
+if strutil.strlen(title) > 0 then str=str.." --title '"..title.."'" end
 
+str=DialogsProcessCmd(str)
+-- str will be nil if user pressed cancel
 return str
 end
 
 
-function QarmaFileSelectionDialog(dialogs, text)
-local S, str
+function QarmaFileSelectionDialog(text, title)
+local str
 
 str="cmd:qarma --file-selection --text='"..text.."'"
-S=stream.STREAM(str, "rw setsid")
-str=S:readdoc()
-S:close()
+if strutil.strlen(title) > 0 then str=str.." --title '"..title.."'" end
 
+str=DialogsProcessCmd(str)
+-- str will be nil if user pressed cancel
 return str
+
 end
 
 
-function QarmaCalendarDialog(dialogs, text)
-local S, str
+function QarmaCalendarDialog(text)
+local str
 
 str="cmd:qarma --calendar --text='"..text.."'"
-S=stream.STREAM(str, "rw setsid")
-str=S:readdoc()
-S:close()
-
+str=DialogsProcessCmd(str)
+-- str will be nil if user pressed cancel
 return str
+
 end
 
 
-function QarmaMenuDialog(dialogs, text, options)
-local S, str, toks, tok
+function QarmaMenuDialog(text, options, title, width, height)
+local str, toks, tok, pid
 
 str="cmd:qarma --list --hide-header --text='"..text.."' "
+if width ~= nil and width > 0 then str=str.." --width "..tostring(width) end
+if height ~= nil and height > 0 then str=str.." --height "..tostring(height) end
+
+
+if title ~= nil then str=str.." --title='"..title.."' " end
 
 toks=strutil.TOKENIZER(options, "|")
 tok=toks:next()
@@ -289,33 +324,32 @@ str=str.. "'" .. tok .."' "
 tok=toks:next()
 end
 
-S=stream.STREAM(str, "rw setsid")
-str=S:readdoc()
-S:close()
-
+str=DialogsProcessCmd(str)
+-- str will be nil if user pressed cancel
 return str
 end
 
 
-
-function QarmaLogDialog(form, text, width, height)
-local str
-local dialog={}
-
-str="cmd:qarma --text-info --title='"..text.."'"
-if width ~= nil and width > 0 then str=str.." --width "..tostring(width) end
-if height ~= nil and height > 0 then str=str.." --height "..tostring(height) end
-
-dialog.S=stream.STREAM(str, "rw setsid")
-dialog.close=dialogs.generic_close
-
-dialog.add=function(dialog, text)
+function QarmaLogDialogAddText(dialog, text)
 if text ~= nil then dialog.S:writeln(text.."\n") end
 dialog.S:flush()
 end
 
+
+function QarmaLogDialog(form, text, width, height)
+local S, str
+local dialog={}
+
+str="cmd:qarma --text-info --text='"..text.."'"
+if width ~= nil and width > 0 then str=str.." --width "..tostring(width) end
+if height ~= nil and height > 0 then str=str.." --height "..tostring(height) end
+
+dialog.S=stream.STREAM(str)
+dialog.add=QarmaLogDialogAddText
+
 return dialog
 end
+
 
 
 
@@ -353,10 +387,12 @@ end
 
 
 
-function QarmaFormObjectCreate(dialogs, title)
+
+function QarmaFormObjectCreate(dialogs, title, text)
 local form={}
 
 form.title=title
+form.text=text
 form.config={}
 form.add=FormItemAdd
 form.addboolean=QarmaFormAddBoolean
@@ -401,16 +437,22 @@ form:add("entry", name, "--add-entry='"..name.."'")
 end
 
 
-function ZenityFormRun(form)
+function ZenityFormRun(form, width, height)
 local str, S
 
 str="zenity --forms --title='" .. form.title .. "' "
+if strutil.strlen(form.text) > 0 then str=str.. "--text='" .. form.text .. "' " end
+if width ~= nil and width > 0 then str=str.." --width "..tostring(width) end
+if height ~= nil and height > 0 then str=str.." --height "..tostring(height) end
+
+
+
 for i,config_item in ipairs(form.config)
 do
 	str=str..config_item.cmd_args.. " "
 end
 
-S=stream.STREAM("cmd:"..str, "rw setsid")
+S=stream.STREAM("cmd:"..str, "")
 str=strutil.trim(S:readdoc())
 S:close()
 
@@ -418,76 +460,73 @@ return FormParseOutput(form, str)
 end
 
 
-function ZenityYesNoDialog(dialog, text, flags)
-local S, str, pid
+function ZenityYesNoDialog(text, flags, title)
+local str, pid
 
 str="cmd:zenity --question --text='"..text.."'"
-S=stream.STREAM(str, "rw setsid")
-pid=S:getvalue("PeerPID")
-str=S:readdoc()
-S:close()
+if strutil.strlen(title) > 0 then str=str.." --title '"..title.."'" end
 
-str=process.waitStatus(tonumber(pid));
-
-if str=="exit:0" then return "yes" end
-return "no"
+str=DialogsProcessCmd(str)
+-- str will be nil if user pressed cancel
+if str==nil then return "no" end
+return "yes"
 end
 
 
-function ZenityInfoDialog(dialog, text)
+function ZenityInfoDialog(text, title)
 local S, str
 
 str="cmd:zenity --info --text='"..text.."'"
-S=stream.STREAM(str, "rw setsid")
-if S ~= nil
-then
-str=S:readdoc()
-S:close()
-end
+if strutil.strlen(title) > 0 then str=str.." --title '"..title.."'" end
+
+str=DialogsProcessCmd(str)
+-- str will be nil if user pressed cancel
+return str
 
 end
 
 
-function ZenityTextEntryDialog(dialog, text)
-local S, str
+function ZenityTextEntryDialog(text, title)
+local str
 
 str="cmd:zenity --entry --text='"..text.."'"
-S=stream.STREAM(str, "rw setsid")
-str=S:readdoc()
-S:close()
+if strutil.strlen(title) > 0 then str=str.." --title '"..title.."'" end
 
+str=DialogsProcessCmd(str)
+-- str will be nil if user pressed cancel
 return str
 end
 
 
-function ZenityFileSelectionDialog(dialog, text)
-local S, str
+function ZenityFileSelectionDialog(text, title)
+local str
 
 str="cmd:zenity --file-selection --text='"..text.."'"
-S=stream.STREAM(str, "rw setsid")
-str=S:readdoc()
-S:close()
+if strutil.strlen(title) > 0 then str=str.." --title '"..title.."'" end
 
+str=DialogsProcessCmd(str)
+-- str will be nil if user pressed cancel
 return str
 end
 
 
-function ZenityCalendarDialog(dialog, text)
-local S, str
+function ZenityCalendarDialog(text, title)
+local str
 
 str="cmd:zenity --calendar --text='"..text.."'"
-S=stream.STREAM(str, "rw setsid")
-str=S:readdoc()
-S:close()
+if strutil.strlen(title) > 0 then str=str.." --title '"..title.."'" end
 
+str=DialogsProcessCmd(str)
+-- str will be nil if user pressed cancel
 return str
 end
 
 
-function ZenityMenuDialog(dialog, text, options)
-local S, str, toks, tok
+function ZenityMenuDialog(text, options, title)
+local str, toks, tok
 
 str="cmd:zenity --list --hide-header --text='"..text.."' "
+if strutil.strlen(title) > 0 then str=str.." --title '"..title.."'" end
 
 toks=strutil.TOKENIZER(options, "|")
 tok=toks:next()
@@ -497,12 +536,31 @@ str=str.. "'" .. tok .."' "
 tok=toks:next()
 end
 
-S=stream.STREAM(str, "rw setsid")
-str=S:readdoc()
-S:close()
 
+str=DialogsProcessCmd(str)
+-- str will be nil if user pressed cancel
 return str
 end
+
+
+function ZenityLogDialogAddText(dialog, text)
+if text ~= nil then dialog.S:writeln(text.."\n") end
+dialog.S:flush()
+end
+
+
+function ZenityLogDialog(form, text, title)
+local S, str
+local dialog={}
+
+str="cmd:zenity --text-info --auto-scroll --title='"..text.."'"
+if strutil.strlen(title) > 0 then str=str.." --title '"..title.."'" end
+dialog.S=stream.STREAM(str)
+dialog.add=ZenityLogDialogAddText
+
+return dialog
+end
+
 
 
 function ZenityProgressDialog(dialog, title, text, width, height)
@@ -540,33 +598,11 @@ end
 
 
 
-function ZenityLogDialog(form, text)
-local S, str
-local dialog={}
-
-str="cmd:zenity --text-info --auto-scroll --title='"..text.."'"
-if width ~= nil and width > 0 then str=str.." --width "..tostring(width) end
-if height ~= nil and height > 0 then str=str.." --height "..tostring(height) end
-
-dialog.S=stream.STREAM(str, "rw setsid")
-dialog.close=dialogs.generic_close
-
-dialog.add=function(self, text)
-if text ~= nil then self.S:writeln(text.."\n") end
-self.S:flush()
-end
-
-
-return dialog
-end
-
-
-
-
-function ZenityFormObjectCreate(dialogs, title)
+function ZenityFormObjectCreate(dialogs, title, text)
 local form={}
 
 form.title=title
+form.text=text
 form.config={}
 form.add=FormItemAdd
 form.addboolean=ZenityFormAddBoolean
@@ -611,20 +647,25 @@ end
 
 
 function YadFormAddEntry(form, name)
-form:add("entry", name, "--field='"..name..":EB'")
+form:add("entry", name, "--add-entry='"..name.."'")
 end
 
 
-function YadFormRun(form)
+function YadFormRun(form, width, height)
 local str, S, i, config_item
 
 str="yad --form --title='" .. form.title .. "' "
+if strutil.strlen(form.text) > 0 then str=str.. "--text='" .. form.text .. "' " end
+if width ~= nil and width > 0 then str=str.." --width "..tostring(width) end
+if height ~= nil and height > 0 then str=str.." --height "..tostring(height) end
+
+
 for i,config_item in ipairs(form.config)
 do
 	str=str..config_item.cmd_args.. " "
 end
 
-S=stream.STREAM("cmd:"..str, "rw setsid")
+S=stream.STREAM("cmd:"..str, "")
 str=strutil.trim(S:readdoc())
 S:close()
 
@@ -633,66 +674,107 @@ end
 
 
 
-function YadYesNoDialog(dialog, text, flags)
-local S, str, pid
+function YadYesNoDialog(text, flags, title)
+local str, pid
 
 str="cmd:yad --question --text='"..text.."'"
-S=stream.STREAM(str, "rw setsid")
-pid=S:getvalue("PeerPID")
-str=S:readdoc()
-S:close()
+if strutil.strlen(title) > 0 then str=str.." --title '"..title.."'" end
 
-str=process.waitStatus(tonumber(pid));
+str=DialogsProcessCmd(str)
+-- str will be nil if user pressed cancel
 
-if str=="exit:0" then return "yes" end
-return "no"
+if str == nil then return "no" end
+return "yes"
 end
 
 
-function YadInfoDialog(dialog, text)
-local S, str
+function YadInfoDialog(text, title)
+local str
 
 str="cmd:yad --text='"..text.."'"
-S=stream.STREAM(str, "rw setsid")
-str=S:readdoc()
-S:close()
+if strutil.strlen(title) > 0 then str=str.." --title '"..title.."'" end
 
+str=DialogsProcessCmd(str)
+-- str will be nil if user pressed cancel
+return str
 end
 
 
-function YadTextEntryDialog(dialog, text)
-local S, str
+function YadTextEntryDialog(text, title)
+local str
 
 str="cmd:yad --entry --text='"..text.."'"
-S=stream.STREAM(str, "rw setsid")
-str=S:readdoc()
-S:close()
+if strutil.strlen(title) > 0 then str=str.." --title '"..title.."'" end
 
+str=DialogsProcessCmd(str)
+-- str will be nil if user pressed cancel
 return str
 end
 
 
 
-function YadFileSelectionDialog(dialog, text)
-local S, str
+function YadFileSelectionDialog(text, title)
+local str
 
 str="cmd:yad --file-selection --text='"..text.."'"
-S=stream.STREAM(str, "rw setsid")
-str=S:readdoc()
-S:close()
+if strutil.strlen(title) > 0 then str=str.." --title '"..title.."'" end
 
+str=DialogsProcessCmd(str)
+-- str will be nil if user pressed cancel
 return str
 end
 
 
-function YadCalendarDialog(dialog, text)
-local S, str
+function YadCalendarDialog(text, title)
+local str
 
 str="cmd:yad --calendar --text='"..text.."'"
-S=stream.STREAM(str, "rw setsid")
-str=S:readdoc()
-S:close()
+if strutil.strlen(title) > 0 then str=str.." --title '"..title.."'" end
 
+str=DialogsProcessCmd(str)
+-- str will be nil if user pressed cancel
+return str
+
+end
+
+
+
+function YadLogDialogAddText(dialog, text)
+if text ~= nil then dialog.S:writeln(text.."\n") end
+dialog.S:flush()
+end
+
+
+function YadLogDialog(form, text, title)
+local S, str
+local dialog={}
+
+str="cmd:yad --text-info "
+if strutil.strlen(text) > 0 then str=str.." --text='"..text.."'" end
+if strutil.strlen(title) > 0 then str=str.." --title '"..title.."'" end
+dialog.S=stream.STREAM(str)
+dialog.add=YadLogDialogAddText
+
+return dialog
+end
+
+
+
+function YadMenuDialog(text, options, title)
+local str, toks, tok
+
+str="cmd:yad --list --no-headers --column='c1' " 
+if strutil.strlen(title) > 0 then str=str.." --title '"..title.."'" end
+toks=strutil.TOKENIZER(options, "|")
+tok=toks:next()
+while tok ~= nil
+do
+str=str.. "'" .. tok .."' "
+tok=toks:next()
+end
+
+str=DialogsProcessCmd(str)
+-- str will be nil if user pressed cancel
 return str
 end
 
@@ -732,50 +814,11 @@ end
 
 
 
-function YadLogDialog(form, text)
-local S, str
-local dialog={}
-
-str="cmd:yad --text-info "
-if strutil.strlen(text) > 0 then str=str.." --text='"..text.."'" end
-dialog.S=stream.STREAM(str, "rw setsid")
-
-dialog.add=function(dialog, text)
-if text ~= nil then dialog.S:writeln(text.."\n") end
-dialog.S:flush()
-end
-
-return dialog
-end
-
-
-
-function YadMenuDialog(dialog, text, options)
-local S, str, toks, tok
-
-str="cmd:yad --list --no-headers --column='c1' " 
-toks=strutil.TOKENIZER(options, "|")
-tok=toks:next()
-while tok ~= nil
-do
-str=str.. "'" .. tok .."' "
-tok=toks:next()
-end
-
-S=stream.STREAM(str, "rw setsid")
-str=S:readdoc()
-S:close()
-
-return str
-end
-
-
-
-
-function YadFormObjectCreate(dialog, title)
+function YadFormObjectCreate(dialogs, title, text)
 local form={}
 
 form.title=title
+form.text=text
 form.config={}
 form.add=FormItemAdd
 form.addboolean=YadFormAddBoolean
@@ -804,34 +847,29 @@ return dialogs
 end
 
 
-function TextConsoleInfoDialog(dialog, text)
+function TextConsoleInfoDialog(text)
 
 end
 
 
-function TextConsoleTextEntryDialog(form, text, description)
+function TextConsoleTextEntryDialog(form, text)
 local str
 
-form.term:clear()
-form.term:move(2,2)
-form.term:puts("Enter '"..text.."'  "..description)
-
-form.term:move(2,4)
-str=form.term:prompt(text..": ")
+str=form.prompt(text..":")
 
 return str
 end
 
 
 
-function TextConsoleFileSelectionDialog(dialog, text)
+function TextConsoleFileSelectionDialog(text)
 local str
 
 return str
 end
 
 
-function TextConsoleCalendarDialog(dialog, text)
+function TextConsoleCalendarDialog(text)
 local str
 
 return str
@@ -853,10 +891,8 @@ local dialog={}
 dialog.S=form.stdio
 
 dialog.term=form.term
-dialog.term:clear()
-
 dialog.add=TextConsoleLogDialogAddText
-dialog.term:bar(text)
+dialog.term:bar("PRESS ANY KEY TO END RECORDING")
 
 return dialog
 end
@@ -885,6 +921,60 @@ str=menu:run()
 
 return str
 end
+
+
+
+function TextConsoleYesNoDialog(form, text, description)
+return TextConsoleMenuDialog(form, text, "yes|no", description)
+end
+
+
+
+function TextConsoleFormAddBoolean(form, name, description)
+form:add("boolean", name, "", description)
+end
+
+
+function TextConsoleFormAddChoice(form, name, choices, description, selected)
+local item
+item=form:add("choice", name, "", description)
+item.choices=choices
+end
+
+
+function TextConsoleFormAddEntry(form, name, description)
+form:add("entry", name, "", description)
+end
+
+
+function TextConsoleFormRun(form)
+local str, results, toks, tok
+
+form.term:clear()
+results=""
+
+for i,form_item in ipairs(form.config)
+do
+
+	if form_item.type == "boolean"
+	then
+		str=TextConsoleYesNoDialog(form, form_item.name, form_item.description)
+		results=results..str.."|"
+	elseif form_item.type=="choice"
+	then
+		str=TextConsoleMenuDialog(form, form_item.name, form_item.choices, form_item.description)
+		results=results..str.."|"
+	elseif qtype=="entry"
+	then
+		str=TextConsoleTextEntryDialog(form, form_item.name, form_item.description)
+		results=results..str.."|"
+	end
+end
+
+form.term:reset()
+return FormParseOutput(form, results)
+end
+
 
 
 
@@ -933,61 +1023,6 @@ end
 
 
 
-
-function TextConsoleYesNoDialog(form, text, description)
-return TextConsoleMenuDialog(form, text, "yes|no", description)
-end
-
-
-
-function TextConsoleFormAddBoolean(form, name, description)
-form:add("boolean", name, "", description)
-end
-
-
-function TextConsoleFormAddChoice(form, name, choices, description, selected)
-local item
-item=form:add("choice", name, "", description)
-item.choices=choices
-end
-
-
-function TextConsoleFormAddEntry(form, name, description)
-form:add("entry", name, "", description)
-end
-
-
-function TextConsoleFormRun(form)
-local str, results, toks, tok
-
-form.term:clear()
-results=""
-
-for i,form_item in ipairs(form.config)
-do
-
-	if form_item.type == "boolean"
-	then
-		str=TextConsoleYesNoDialog(form, form_item.name, form_item.description)
-		results=results..str.."|"
-	elseif form_item.type=="choice"
-	then
-		str=TextConsoleMenuDialog(form, form_item.name, form_item.choices, form_item.description)
-		results=results..str.."|"
-	elseif form_item.type=="entry"
-	then
-		str=TextConsoleTextEntryDialog(form, form_item.name, form_item.description)
-		results=results..str.."|"
-	end
-end
-
-form.term:reset()
-return FormParseOutput(form, results)
-end
-
-
-
-
 function TextConsoleFormObjectCreate(dialogs, title)
 local form={}
 
@@ -1028,43 +1063,41 @@ end
 
 function DialogSelectDriver()
 
-if strutil.strlen(filesys.find("yad", process.getenv("PATH"))) > 0 then return "yad" end
-if strutil.strlen(filesys.find("qarma", process.getenv("PATH"))) > 0 then return "qarma" end
 if strutil.strlen(filesys.find("zenity", process.getenv("PATH"))) > 0 then return "zenity" end
+if strutil.strlen(filesys.find("qarma", process.getenv("PATH"))) > 0 then return "qarma" end
+if strutil.strlen(filesys.find("yad", process.getenv("PATH"))) > 0 then return "yad" end
 
-return "text"
+return "native"
 end
 
 
-function NewDialog(config)
-local dialogs={}
-local driver
+function NewDialog(driver)
+local dialog={}
 
-driver=config.driver
-dialogs.config=""
+
+dialog.config=""
 
 if strutil.strlen(driver) == 0 then driver=DialogSelectDriver() end
 
 if driver == "qarma"
 then
-	dialogs=QarmaObjectCreate()
+	dialog=QarmaObjectCreate()
 elseif driver == "zenity"
 then
-	dialogs=ZenityObjectCreate()
+	dialog=ZenityObjectCreate()
 elseif driver == "yad"
 then
-	dialogs=YadObjectCreate()
+	dialog=YadObjectCreate()
 else
-	driver="text"
-	dialogs=TextConsoleObjectCreate(dialogs)
+	dialog=TextConsoleObjectCreate(dialog)
 end
 
-dialogs.driver=driver
+dialog.driver=driver
 
 -- these are generic functions that are added to dialogss when
 -- they are created. 'setmax' is only added to progress dialogss
 -- 'close' is added to all dialogs types
-dialogs.generic_close=function(self)
+dialog.generic_close=function(self)
 if self.S ~= nil
 then
 process.kill(tonumber(0-self.S:getvalue("PeerPID")))
@@ -1072,11 +1105,12 @@ self.S:close()
 end
 end
 
-dialogs.generic_setmax=function(self, max)
+dialog.generic_setmax=function(self, max)
 self.max=tonumber(max)
 end
 
-return dialogs
+
+return dialog
 end
 
 function CodecsInit()
@@ -1631,7 +1665,7 @@ end
 config=InitConfig()
 codecs=CodecsInit()
 devices=GetSoundDevices()
-dialogs=NewDialog(config)
+dialogs=NewDialog(config.driver)
 
 config=SetupDialog(config, devices)
 

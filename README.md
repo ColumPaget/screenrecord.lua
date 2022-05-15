@@ -5,6 +5,14 @@ screenrecord.lua is a lua script that launches an ffmpeg process for screen-reco
 
 screenrecord.lua autodetects the ui-types that are available, and to some extent OSS, ALSA and PulseAudio sources that are available (though some of these may not work, as for many devices it's not easy to detect if the input is mono or stereo, and so both are offered but one will fail).
 
+
+AUTHOR
+======
+
+screenrecord.lua is (C) 2021 Colum Paget. It is released under the GPLv3 so you may do anything with them that the GPL allows.
+Email: colums.projects@gmail.com
+
+
 INSTALL
 =======
 
