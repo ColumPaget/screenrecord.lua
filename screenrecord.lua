@@ -476,8 +476,8 @@ end
 function ZenityInfoDialog(text, title)
 local S, str
 
-str="cmd:zenity --info --text='"..text.."'"
-if strutil.strlen(title) > 0 then str=str.." --title '"..title.."'" end
+str="cmd:zenity --info --text=\""..text.."\""
+if strutil.strlen(title) > 0 then str=str.." --title \""..title.."\"" end
 
 str=DialogsProcessCmd(str)
 -- str will be nil if user pressed cancel
@@ -1165,6 +1165,8 @@ return str
 end
 
 cmdS=stream.STREAM("cmd:ffmpeg -encoders", "rw +stderr noshell")
+if cmdS == nil then return(nil) end
+
 str=cmdS:readln()
 while str ~= nil
 do
@@ -1564,52 +1566,10 @@ local audio_filter=""
 end
 
 
-
-
-
-function DoRecord(config)
-local audio=""
-local audio_filter=""
-local show_pointer=""
-local show_region=""
-local follow_mouse=""
-local audio=""
-local audio_filter=""
-local cmdS, S, poll, dialog, str, Xdisplay, codec
-local gui
-
-Xdisplay=process.getenv("DISPLAY") .. " "
-if config.audio ~= "none"
-then 
-audio,audio_filter=BuildAudioConfig(config) 
-end
-
-if config["show capture region"] == true then show_region="-show_region 1 " end
---if config["show pointer"] == false then show_pointer="-draw_mouse 0 " end
-
-if config["follow_mouse"] ~= "no" then follow_mouse="-follow_mouse "..config["follow_mouse"] .. " " end
-
-codec=codecs:get(config.codec)
-
-config.output_path = config.output_path .. codec.extn
-if config["size"]=="no video" or codec.video==false
-then
-	--Audio only
-	str="ffmpeg -nostats " .. audio .. audio_filter .. codec.cmdline .. config.output_path
-else
-	--Audio and Video (Default)
-	str="ffmpeg -nostats -s " .. config["size"] .. " -r " .. config["fps"] .. " ".. show_pointer.. show_region .. follow_mouse .. " -f x11grab " .. " -i " .. Xdisplay .. audio .. audio_filter .. codec.cmdline .. config.output_path
-end
-
-gui=AudioRecordDialog(config)
-filesys.mkdirPath(config.output_path)
-cmdS=stream.STREAM("cmd:" .. str, "rw +stderr noshell")
-poll=stream.POLL_IO()
-poll:add(gui.S)
-poll:add(cmdS)
-
-log=ProcessLogInit()
-time.usleep(30)
+-- handle any output/messages that come out of the recording command
+-- or the associated gui
+function DoRecordProcessFeedback(poll, cmdS, gui, log)
+local S, str
 
 while true
 do
@@ -1648,7 +1608,59 @@ do
 	end
 end
 
-process.kill(tonumber(cmdS:getvalue("PeerPID")))
+end
+
+
+function DoRecord(config)
+local audio=""
+local audio_filter=""
+local show_pointer=""
+local show_region=""
+local follow_mouse=""
+local audio=""
+local audio_filter=""
+local cmdS, S, poll, dialog, str, Xdisplay, codec
+local gui
+
+Xdisplay=process.getenv("DISPLAY") .. " "
+if config.audio ~= "none"
+then 
+audio,audio_filter=BuildAudioConfig(config) 
+end
+
+if config["show capture region"] == true then show_region="-show_region 1 " end
+--if config["show pointer"] == false then show_pointer="-draw_mouse 0 " end
+
+if config["follow_mouse"] == "edge" then follow_mouse="-follow_mouse 20 "
+elseif config["follow_mouse"] == "centered" then follow_mouse="-follow_mouse centered " 
+end
+
+
+codec=codecs:get(config.codec)
+
+config.output_path = config.output_path .. codec.extn
+if config["size"]=="no video" or codec.video==false
+then
+	--Audio only
+	str="ffmpeg -nostats " .. audio .. audio_filter .. codec.cmdline .. config.output_path
+else
+	--Audio and Video (Default)
+	str="ffmpeg -nostats -s " .. config["size"] .. " -r " .. config["fps"] .. " ".. show_pointer.. show_region .. follow_mouse .. " -f x11grab " .. " -i " .. Xdisplay .. audio .. audio_filter .. codec.cmdline .. config.output_path
+end
+
+gui=AudioRecordDialog(config)
+filesys.mkdirPath(config.output_path)
+cmdS=stream.STREAM("cmd:" .. str, "rw +stderr noshell newpgroup")
+poll=stream.POLL_IO()
+poll:add(gui.S)
+poll:add(cmdS)
+
+log=ProcessLogInit()
+time.usleep(30)
+
+DoRecordProcessFeedback(poll, cmdS, gui, log)
+
+process.kill(0 - tonumber(cmdS:getvalue("PeerPID")))
 cmdS:close()
 
 if gui.term ~= nil
@@ -1663,9 +1675,17 @@ end
 
 
 config=InitConfig()
-codecs=CodecsInit()
-devices=GetSoundDevices()
+
 dialogs=NewDialog(config.driver)
+
+codecs=CodecsInit()
+if codecs==nil
+then
+dialogs.info("Can't initialize ffmpeg. Is it installed?", "FFMPEG ERROR")
+os.exit(1)
+end
+
+devices=GetSoundDevices()
 
 config=SetupDialog(config, devices)
 

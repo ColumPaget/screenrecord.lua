@@ -375,8 +375,8 @@ end
 function ZenityInfoDialog(text, title)
 local S, str
 
-str="cmd:zenity --info --text='"..text.."'"
-if strutil.strlen(title) > 0 then str=str.." --title '"..title.."'" end
+str="cmd:zenity --info --text=\""..text.."\""
+if strutil.strlen(title) > 0 then str=str.." --title \""..title.."\"" end
 
 str=DialogsProcessCmd(str)
 -- str will be nil if user pressed cancel

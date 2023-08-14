@@ -50,6 +50,8 @@ return str
 end
 
 cmdS=stream.STREAM("cmd:ffmpeg -encoders", "rw +stderr noshell")
+if cmdS == nil then return(nil) end
+
 str=cmdS:readln()
 while str ~= nil
 do
