@@ -1,18 +1,27 @@
+function SoundInit()
+local sound={}
 
-function AddSoundDevice(devices, systype, devnum, name, channels)
+sound.devices={}
+
+
+sound.add=function(self, systype, devnum, name, channels)
 local device={}
 
 device.type=systype
 device.num=devnum
 device.name=name
 device.channels=channels
+device.id=device.type..":"..tostring(device.num)
+if channels==2 then device.id = device.id ..":s"
+else device.id = device.id ..":m"
+end
 
-table.insert(devices, device)
+table.insert(self.devices, device)
 return device
 end
 
 
-function AddALSASoundDevice(devices, devnum, name)
+sound.add_alsa=function(self, devnum, name)
 local S, chans, str
 local in_capture=false
 
@@ -40,20 +49,20 @@ end
 
 if chans==1
 then
-		AddSoundDevice(devices, "alsa", devnum, name, 1)
+		self:add("alsa", devnum, name, 1)
 else
-		AddSoundDevice(devices, "alsa", devnum, name, 1)
-		AddSoundDevice(devices, "alsa", devnum, name, 2)
+		self:add("alsa", devnum, name, 1)
+		self:add("alsa", devnum, name, 2)
 end
 
 end
 
 
-function ALSALoadSoundCards(devices)
+sound.load_alsa=function(self)
 local S, str, pos, name, toks, tok, devnum
 
-AddSoundDevice(devices, "alsa", -1, "default", 1)
-AddSoundDevice(devices, "alsa", -1, "default", 2)
+self:add_alsa(-1, "default", 1)
+self:add_alsa(-1, "default", 2)
 S=stream.STREAM("/proc/asound/cards", "r");
 str=S:readln()
 while str ~= nil
@@ -72,7 +81,7 @@ do
 		tok=toks:next()
 		end
 
-		AddALSASoundDevice(devices, devnum, name)
+		self:add_alsa(devnum, name)
 
 		str=S:readln() --the next line is more information that we don't need
 		str=S:readln()
@@ -81,7 +90,7 @@ S:close()
 end
 
 
-function OSSLoadSoundCards(devices)
+sound.load_oss=function(self)
 local Glob, S, str, pos, devnum
 
 devnum=0
@@ -90,20 +99,77 @@ str=Glob:next()
 while str ~= nil
 do
 	devnum=devnum+1
-	AddSoundDevice(devices, "oss", devnum, str, 1)
-	AddSoundDevice(devices, "oss", devnum, str, 2)
+	self:add("oss", devnum, str, 1)
+	self:add("oss", devnum, str, 2)
 	str=Glob:next()
 end
 end
 
 
 
-function GetSoundDevices()
+sound.load=function(self)
 local devices={}
 
-OSSLoadSoundCards(devices)
-ALSALoadSoundCards(devices)
-AddSoundDevice(devices, "pulseaudio", 0, "", 1)
-AddSoundDevice(devices, "pulseaudio", 0, "", 2)
-return devices
+self:load_oss()
+self:load_alsa()
+self:add("pulseaudio", 0, "", 1)
+self:add("pulseaudio", 0, "", 2)
+end
+
+
+sound.get=function(self, name)
+local toks, requested, found
+
+toks=strutil.TOKENIZER(name, " ")
+requested=toks:next()
+
+for i,item in ipairs(self.devices)
+do
+	if requested==item.id then return item end
+end
+
+return nil
+end
+
+sound.get_formatted=function(self, name)
+local dev
+
+dev=self:get(name)
+if dev == nil then return("") end
+return(self:format(dev))
+end
+
+
+sound.format=function(self, dev)
+local str
+
+  str=dev.id .. " " .. dev.name
+  if dev.channels==1
+  then
+    str=str..":mono"
+  else
+    str=str..":stereo"
+  end
+
+return str
+end
+
+
+sound.list=function(self)
+local devices, i, dev
+local str=""
+
+str="none"
+for i,dev in ipairs(self.devices)
+do
+  str=str.."|"..self:format(dev)
+end
+
+return str
+end
+
+
+
+sound:load()
+return sound
 end

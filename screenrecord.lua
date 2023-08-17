@@ -7,6 +7,8 @@ require("time")
 require("sys")
 
 
+VERSION=2.0
+
 function tobool(str)
 
 str=string.lower(strutil.trim(str))
@@ -23,21 +25,91 @@ return false
 end
 
 function PrintHelp()
-print("screencast.lua version 1.0")
+print("screenrecord.lua version "..VERSION)
 print("usage:")
-print("  lua screencast.lua [options]")
+print("  lua screenrecord.lua [options]")
 print("options:")
+print("  -N                  no ui, just honor command-line arguments")
 print("  -ui <type>          specify ui type to use. Values are qarma, zenity, yad or text")
+print("  -s <x.y>            specify recording window size")
 print("  -size <x.y>         specify recording window size")
 print("  -fps <value>        frames per second to record at")
+print("  -c <value>          seconds of countdown before recoding starts")
+print("  -count <value>      seconds of countdown before recoding starts")
+print("  -countdown <value>  seconds of countdown before recoding starts")
+print("  -C                  list codecs supported by ffmpeg")
+print("  -list-codecs        list codecs supported by ffmpeg")
+print("  -L                  list audio inputs supported by ffmpeg")
+print("  -list-audio         list audio inputs supported by ffmpeg")
+print("  -codec <name>       name (e.g. 'mp4:h264:aac', 'ogv:flac') of codec to use")
+print("  -a <name>           name (e.g. 'alsa:1:s', 'oss:0:m') of sound-input to use")
+print("  -audio <name>       name (e.g. 'alsa:1:s', 'oss:0:m') of sound-input to use")
+print("  -sound <name>       name (e.g. 'alsa:1:s', 'oss:0:m') of sound-input to use")
+print("  -noise              enable audio noise reduction")
+print("  -nr                 enable audio noise reduction")
+print("  -region             show capture region")
+print("  -follow <type>      'follow mouse', either 'centered' or 'edge'")
 print("  -outdir <path>      path to directory to store recordings in")
 print("  -o <path>           full path to recording file to create")
 print("  -?                  this help")
 print("  -help               this help")
 print("  --help              this help")
+print("  --help              this help")
+print("  -version            print program version")
+print("  --version           print program version")
 
 os.exit()
 end
+
+
+function PrintVersion()
+print("screenrecord.lua: version " .. VERSION)
+os.exit()
+end
+
+
+function ListItemOutput(item)
+local toks, tok, str
+
+toks=strutil.TOKENIZER(item, " ")
+str=toks:next()
+str=strutil.padto(str, ' ', 20)
+tok=toks:remaining()
+if tok ~= nil then str=str .. tok end
+print(str)
+end
+
+
+function ListCodecs()
+local str, toks, tok
+
+str=codecs:list()
+toks=strutil.TOKENIZER(str, "|")
+item=toks:next()
+while item ~= nil
+do
+ListItemOutput(item)
+item=toks:next()
+end
+
+os.exit()
+end
+
+function ListSoundDevs()
+local str, toks, tok
+
+str=sound:list()
+toks=strutil.TOKENIZER(str, "|")
+item=toks:next()
+while item ~= nil
+do
+ListItemOutput(item)
+item=toks:next()
+end
+
+os.exit()
+end
+
 
 
 function ParseCommandLine(config)
@@ -47,12 +119,15 @@ for i,item in ipairs(arg)
 do
 if item == "-?" or item == "--help" or item == "-help"
 then 
-	PrintHelp() 
+  PrintHelp() 
+elseif item == "--version" or item == "-version"
+then
+  PrintVersion()
 elseif item == "-ui"
 then
  config.driver=arg[i+1]
  arg[i+1]=""
-elseif item == "-size"
+elseif item == "-s" or item == "-size"
 then
  config.size=arg[i+1]
  arg[i+1]=""
@@ -60,10 +135,28 @@ elseif item == "-fps"
 then
  config.fps=arg[i+1]
  arg[i+1]=""
+elseif item == "-c" or item == "-count" or item == "-countdown"
+then
+ config.countdown=arg[i+1]
+ arg[i+1]=""
+elseif item == "-follow"
+then
+ config.follow_mouse=arg[i+1]
+ arg[i+1]=""
 elseif item == "-codec"
 then
  config.codec=arg[i+1]
  arg[i+1]=""
+elseif item == "-a" or item == "-audio" or item == "-sound"
+then
+ config.audio=arg[i+1]
+ arg[i+1]=""
+elseif item == "-C" or item == "-list-codecs"
+then
+ ListCodecs()
+elseif item == "-L" or item == "-list-sound"
+then
+ ListSoundDevs()
 elseif item == "-outdir"
 then
  config.destdir=arg[i+1]
@@ -71,7 +164,10 @@ then
 elseif item == "-o"
 then
  config.output_path=arg[i+1]
- arg[i+1]=""
+--boolean options
+elseif item == "-N" or item == "-nodialog" then config.no_dialog=true; config.driver="cli"
+elseif item == "-noise" or item == "-nr" then config.noise_reduction=true
+elseif item == "-region" then config.show_capture_region=true
 end
 end
 
@@ -82,10 +178,12 @@ end
 function InitConfig()
 local config={}
 
+config.no_dialog=false
 config.follow_mouse="no"
 config.fps=30
 config.size=""
 config.codec="mp4 (h264/aac)"
+config.audio="none"
 
 ParseCommandLine(config)
 
@@ -1007,7 +1105,7 @@ if strutil.strlen(text) > 0 then self.term:puts(text.."~>") end
 
 self.term:move(2,9)
 
-perc=math.floor(val * 100 / progress.max)
+perc=math.floor(val * 100 / self.max)
 
 str=""
 for i=0,perc,1 do str=str.."*" end
@@ -1061,6 +1159,80 @@ end
 
 
 
+function CLIInfoDialog(text)
+io.stderr:write(text.."\n")
+end
+
+function CLIProgressDialog(dialogs, title, text)
+local dialog={}
+
+if strutil.strlen(text) > 0 then io.stderr:write(text.."\n") end
+
+dialog.max=100
+
+
+dialog.set_max=function(self, val)
+self.max=val
+end
+
+--update progress bar to position 'val' with underlying text 'text'
+dialog.add=function(self, val, text)
+local perc, i, str
+
+perc=math.floor(val * 100 / self.max)
+str=string.format("%d%%  ", perc)
+if strutil.strlen(text) > 0 then str=str .. strutil.trim(text) end
+io.stderr:write("\r" .. str .. "  ")
+end
+
+
+--very generic 'close' function
+dialog.close=function(self)
+end
+
+
+return dialog
+end
+
+
+function CLILogDialog(dialogs, text)
+local dialog={}
+
+dialog.add=function(self, text)
+io.stderr:write(text.."\n")
+end
+
+dialog.close=function(self)
+end
+
+return dialog
+end
+
+
+
+function CLIObjectCreate()
+local dialogs={}
+
+dialogs.stdio=stream.STREAM("-")
+dialogs.info=CLIInfoDialog
+dialogs.log=CLILogDialog
+dialogs.progress=CLIProgressDialog
+
+--[[ not implemented for Command Line Interface
+dialogs.yesno=TextConsoleYesNoDialog
+dialogs.entry=TextConsoleTextEntryDialog
+dialogs.fileselect=TextConsoleFileSelectionDialog
+dialogs.calendar=TextConsoleCalendarDialog
+dialogs.menu=TextConsoleMenuDialog
+dialogs.form=TextConsoleFormObjectCreate
+]]--
+
+return dialogs
+end
+
+
+
+
 function DialogSelectDriver()
 
 if strutil.strlen(filesys.find("zenity", process.getenv("PATH"))) > 0 then return "zenity" end
@@ -1088,13 +1260,16 @@ then
 elseif driver == "yad"
 then
 	dialog=YadObjectCreate()
+elseif driver == "cli"
+then
+	dialog=CLIObjectCreate()
 else
 	dialog=TextConsoleObjectCreate(dialog)
 end
 
 dialog.driver=driver
 
--- these are generic functions that are added to dialogss when
+-- these are generic functions that are added to dialogs when
 -- they are created. 'setmax' is only added to progress dialogss
 -- 'close' is added to all dialogs types
 dialog.generic_close=function(self)
@@ -1139,9 +1314,51 @@ end
 
 end
 
-codecs.get=function(self, name)
-return self.items[name]
+
+codecs.get_default=function(self)
+local choice, i, toks
+
+for i,choice in pairs({"ogv", "mp4:h264:aac", "mp4:aac", "mp4:ogg", "mp4:mp3"})
+do
+if self:get_title(choice) ~= nil then return choice end
 end
+
+end
+
+
+codecs.get_title=function(self, name)
+local key, value, toks, tag
+
+toks=strutil.TOKENIZER(name, " ")
+tag=toks:next()
+
+for key,value in pairs(self.items)
+do
+toks=strutil.TOKENIZER(key, " ")
+if tag == toks:next() then return(key) end
+end
+
+return(nil)
+end
+
+
+
+codecs.get_args=function(self, name)
+local key, value, toks, tag
+
+toks=strutil.TOKENIZER(name, " ")
+tag=toks:next()
+
+for key,value in pairs(self.items)
+do
+toks=strutil.TOKENIZER(key, " ")
+if tag == toks:next() then return(value) end
+end
+
+return(nil)
+end
+
+
 
 codecs.list=function(self)
 local key, item, i, name
@@ -1153,6 +1370,7 @@ do
 	table.insert(sort_table, key)
 end
 
+str=self:get_default()
 table.sort(sort_table)
 for i,name in ipairs(sort_table)
 do
@@ -1202,31 +1420,31 @@ cmdS:close()
 -- if video["h263"] == true and audio["aac"]==true then codecs:add("3gp (h263/aac)", " -vcodec h263 -acodec aac ", ".3gp") end
 
 if video["flv"] == true and audio["libmp3lame"]==true then codecs:add("flv (flash player 7+ flv/mp3)", " -vcodec flv -acodec libmp3lame -ar 44100 ", ".flv") end
-if video["flv"] == true and audio["nellymoser"]==true then codecs:add("flv (flash player 7+ flv/nellymoser)", " -vcodec flv -acodec nellymoser -ar 44100 ", ".flv") end
-if video["flv"] == true and audio["aac"]==true then codecs:add("flv (flash player 9+ flv/aac)", " -vcodec flv -acodec aac ", ".flv") end
-if video["h263"] == true and audio["libmp3lame"]==true then codecs:add("f4v (flash player 9+ h263/mp3)", " -vcodec h263 -acodec libmp3lame ", ".f4v") end
-if video["h263"] == true and audio["aac"]==true then codecs:add("f4v (flash player 9+ h263/aac)", " -vcodec h263 -acodec aac ", ".f4v") end
-if video["h264"] == true and audio["aac"]==true then codecs:add("f4v (flash player 9+ h264/aac)", " -vcodec h264 -acodec aac ", ".f4v") end
-if video["h264"] == true and audio["libmp3lame"]==true then codecs:add("f4v (flash player 9+ h264/mp3)", " -vcodec h264 -acodec libmp3lame ", ".f4v") end
-if video["theora"]==true and audio["vorbis"]==true then codecs:add("ogv (theora/vorbis)", " -vcodec libtheora -qscale:v 10 -acodec libvorbis -qscale:a 10 ", ".ogv") end
-if video["theora"]==true and audio["opus"]==true then codecs:add("ogv (theora/opus)", " -vcodec libtheora -qscale:v 10 -acodec libopus ", ".ogv") end
-if video["theora"]==true and audio["flac"]==true then codecs:add("ogv (theora/flac)", " -vcodec libtheora -qscale:v 10 -acodec flac ", ".ogv") end
-if video["h264"] == true and audio["aac"] == true then codecs:add("mp4 (h264/aac)", " -vcodec libx264 -preset ultrafast -acodec aac ", ".mp4") end
-if video["h264"] == true and audio["libmp3lame"] == true then codecs:add("mp4 (h264/mp3)", " -vcodec libx264 -preset ultrafast -acodec libmp3lame ", ".mp4") end
-if video["h264"] == true and audio["opus"] == true then codecs:add("mp4 (h264/opus)", " -vcodec libx264 -preset ultrafast -acodec libopus ", ".mp4") end
-if video["h264"] == true and audio["vorbis"] == true then codecs:add("mp4 (h264/vorbis)", " -vcodec libx264 -preset ultrafast -acodec libvorbis ", ".mp4") end
-if video["h264"] == true and audio["flac"] == true then codecs:add("mp4 (h264/flac)", " -vcodec libx264 -preset ultrafast -acodec flac ", ".mp4") end
-if video["mpeg4"] == true and audio["aac"] == true then codecs:add("mp4 (mpeg4/aac)", " -vcodec mpeg4 -acodec aac ", ".mp4") end
-if video["mpeg4"] == true and audio["libmp3lame"] == true then codecs:add("mp4 (mpeg4/mp3)", " -vcodec mpeg4 -acodec libmp3lame ", ".mp4") end
-if video["mpeg4"] == true and audio["opus"] == true then codecs:add("mp4 (mpeg4/opus)", " -vcodec mpeg4 -acodec libopus ", ".mp4") end
-if video["mpeg4"] == true and audio["vorbis"] == true then codecs:add("mp4 (mpeg4/vorbis)", " -vcodec mpeg4 -acodec libvorbis ", ".mp4") end
-if video["mpeg4"] == true and audio["flac"] == true then codecs:add("mp4 (mpeg4/flac)", " -vcodec mpeg4 -acodec flac ", ".mp4") end
-if video["vp8"] == true and audio["vorbis"] == true then codecs:add("webm (vp8/vorbis)", " -vcodec libvpx -acodec libvorbis ", ".webm") end
-if video["vp9"] == true and audio["vorbis"] == true then codecs:add("webm (vp9/vorbis)", " -vcodec libvpx-vp9 -acodec libvorbis ", ".webm") end
-if video["vp9"] == true and audio["opus"] == true then codecs:add("webm (vp9/opus)", " -vcodec libvpx-vp9 -acodec libopus ", ".webm") end
+if video["flv"] == true and audio["nellymoser"]==true then codecs:add("flv:nm (flash player 7+ flv/nellymoser)", " -vcodec flv -acodec nellymoser -ar 44100 ", ".flv") end
+if video["flv"] == true and audio["aac"]==true then codecs:add("flv:aac (flash player 9+ flv/aac)", " -vcodec flv -acodec aac ", ".flv") end
+if video["h263"] == true and audio["libmp3lame"]==true then codecs:add("f4v:h263:mp3 (flash player 9+ h263/mp3)", " -vcodec h263 -acodec libmp3lame ", ".f4v") end
+if video["h264"] == true and audio["libmp3lame"]==true then codecs:add("f4v:h264:mp3 (flash player 9+ h264/mp3)", " -vcodec h264 -acodec libmp3lame ", ".f4v") end
+if video["h263"] == true and audio["aac"]==true then codecs:add("f4v:h263:aac (flash player 9+ h263/aac)", " -vcodec h263 -acodec aac ", ".f4v") end
+if video["h264"] == true and audio["aac"]==true then codecs:add("f4v:h264:aac (flash player 9+ h264/aac)", " -vcodec h264 -acodec aac ", ".f4v") end
+if video["theora"]==true and audio["vorbis"]==true then codecs:add("ogv (theora/ogg vorbis)", " -vcodec libtheora -qscale:v 10 -acodec libvorbis -qscale:a 10 ", ".ogv") end
+if video["theora"]==true and audio["opus"]==true then codecs:add("ogv:opus (theora/opus)", " -vcodec libtheora -qscale:v 10 -acodec libopus ", ".ogv") end
+if video["theora"]==true and audio["flac"]==true then codecs:add("ogv:flac (theora/flac)", " -vcodec libtheora -qscale:v 10 -acodec flac ", ".ogv") end
+if video["h264"] == true and audio["aac"] == true then codecs:add("mp4:h264:aac (h264/aac)", " -vcodec libx264 -preset ultrafast -acodec aac ", ".mp4") end
+if video["h264"] == true and audio["libmp3lame"] == true then codecs:add("mp4:h264:mp3 (h264/mp3)", " -vcodec libx264 -preset ultrafast -acodec libmp3lame ", ".mp4") end
+if video["h264"] == true and audio["opus"] == true then codecs:add("mp4:h264:opus (h264/opus)", " -vcodec libx264 -preset ultrafast -acodec libopus ", ".mp4") end
+if video["h264"] == true and audio["vorbis"] == true then codecs:add("mp4:h264:ogg (h264/ogg vorbis)", " -vcodec libx264 -preset ultrafast -acodec libvorbis ", ".mp4") end
+if video["h264"] == true and audio["flac"] == true then codecs:add("mp4:h264:flac (h264/flac)", " -vcodec libx264 -preset ultrafast -acodec flac ", ".mp4") end
+if video["mpeg4"] == true and audio["aac"] == true then codecs:add("mp4:aac (mpeg4/aac)", " -vcodec mpeg4 -acodec aac ", ".mp4") end
+if video["mpeg4"] == true and audio["libmp3lame"] == true then codecs:add("mp4:mp3 (mpeg4/mp3)", " -vcodec mpeg4 -acodec libmp3lame ", ".mp4") end
+if video["mpeg4"] == true and audio["opus"] == true then codecs:add("mp4:opus (mpeg4/opus)", " -vcodec mpeg4 -acodec libopus ", ".mp4") end
+if video["mpeg4"] == true and audio["vorbis"] == true then codecs:add("mp4:ogg (mpeg4/ogg vorbis)", " -vcodec mpeg4 -acodec libvorbis ", ".mp4") end
+if video["mpeg4"] == true and audio["flac"] == true then codecs:add("mp4:flac (mpeg4/flac)", " -vcodec mpeg4 -acodec flac ", ".mp4") end
+if video["vp8"] == true and audio["vorbis"] == true then codecs:add("webm:vp8:ogg (vp8/ogg vorbis)", " -vcodec libvpx -acodec libvorbis ", ".webm") end
+if video["vp9"] == true and audio["vorbis"] == true then codecs:add("webm:vp9:ogg (vp9/ogg vorbis)", " -vcodec libvpx-vp9 -acodec libvorbis ", ".webm") end
+if video["vp9"] == true and audio["opus"] == true then codecs:add("webm:vp9:opus (vp9/opus)", " -vcodec libvpx-vp9 -acodec libopus ", ".webm") end
 if audio["libmp3lame"] == true then codecs:add("audio:mp3", " -acodec libmp3lame ", ".mp3", false) end
 if audio["opus"] == true then codecs:add("audio:opus", " -acodec libopus ", ".opus", false) end
-if audio["vorbis"] == true then codecs:add("audio:ogg vorbis", " -acodec libvorbis ", ".ogg", false) end
+if audio["vorbis"] == true then codecs:add("audio:ogg", " -acodec libvorbis ", ".ogg", false) end
 if audio["flac"] == true then codecs:add("audio:flac", " -acodec flac ", ".flac", false) end
 
 
@@ -1236,21 +1454,30 @@ end
 
 
 
+function SoundInit()
+local sound={}
 
-function AddSoundDevice(devices, systype, devnum, name, channels)
+sound.devices={}
+
+
+sound.add=function(self, systype, devnum, name, channels)
 local device={}
 
 device.type=systype
 device.num=devnum
 device.name=name
 device.channels=channels
+device.id=device.type..":"..tostring(device.num)
+if channels==2 then device.id = device.id ..":s"
+else device.id = device.id ..":m"
+end
 
-table.insert(devices, device)
+table.insert(self.devices, device)
 return device
 end
 
 
-function AddALSASoundDevice(devices, devnum, name)
+sound.add_alsa=function(self, devnum, name)
 local S, chans, str
 local in_capture=false
 
@@ -1278,20 +1505,20 @@ end
 
 if chans==1
 then
-		AddSoundDevice(devices, "alsa", devnum, name, 1)
+		self:add("alsa", devnum, name, 1)
 else
-		AddSoundDevice(devices, "alsa", devnum, name, 1)
-		AddSoundDevice(devices, "alsa", devnum, name, 2)
+		self:add("alsa", devnum, name, 1)
+		self:add("alsa", devnum, name, 2)
 end
 
 end
 
 
-function ALSALoadSoundCards(devices)
+sound.load_alsa=function(self)
 local S, str, pos, name, toks, tok, devnum
 
-AddSoundDevice(devices, "alsa", -1, "default", 1)
-AddSoundDevice(devices, "alsa", -1, "default", 2)
+self:add_alsa(-1, "default", 1)
+self:add_alsa(-1, "default", 2)
 S=stream.STREAM("/proc/asound/cards", "r");
 str=S:readln()
 while str ~= nil
@@ -1310,7 +1537,7 @@ do
 		tok=toks:next()
 		end
 
-		AddALSASoundDevice(devices, devnum, name)
+		self:add_alsa(devnum, name)
 
 		str=S:readln() --the next line is more information that we don't need
 		str=S:readln()
@@ -1319,7 +1546,7 @@ S:close()
 end
 
 
-function OSSLoadSoundCards(devices)
+sound.load_oss=function(self)
 local Glob, S, str, pos, devnum
 
 devnum=0
@@ -1328,23 +1555,105 @@ str=Glob:next()
 while str ~= nil
 do
 	devnum=devnum+1
-	AddSoundDevice(devices, "oss", devnum, str, 1)
-	AddSoundDevice(devices, "oss", devnum, str, 2)
+	self:add("oss", devnum, str, 1)
+	self:add("oss", devnum, str, 2)
 	str=Glob:next()
 end
 end
 
 
 
-function GetSoundDevices()
+sound.load=function(self)
 local devices={}
 
-OSSLoadSoundCards(devices)
-ALSALoadSoundCards(devices)
-AddSoundDevice(devices, "pulseaudio", 0, "", 1)
-AddSoundDevice(devices, "pulseaudio", 0, "", 2)
-return devices
+self:load_oss()
+self:load_alsa()
+self:add("pulseaudio", 0, "", 1)
+self:add("pulseaudio", 0, "", 2)
 end
+
+
+sound.get=function(self, name)
+local toks, requested, found
+
+toks=strutil.TOKENIZER(name, " ")
+requested=toks:next()
+
+for i,item in ipairs(self.devices)
+do
+	if requested==item.id then return item end
+end
+
+return nil
+end
+
+sound.get_formatted=function(self, name)
+local dev
+
+dev=self:get(name)
+if dev == nil then return("") end
+return(self:format(dev))
+end
+
+
+sound.format=function(self, dev)
+local str
+
+  str=dev.id .. " " .. dev.name
+  if dev.channels==1
+  then
+    str=str..":mono"
+  else
+    str=str..":stereo"
+  end
+
+return str
+end
+
+
+sound.list=function(self)
+local devices, i, dev
+local str=""
+
+str="none"
+for i,dev in ipairs(self.devices)
+do
+  str=str.."|"..self:format(dev)
+end
+
+return str
+end
+
+
+
+sound:load()
+return sound
+end
+-- query screen info, like dimensions etc
+
+
+function GetScreenResolution()
+local S
+local dim=""
+
+S=stream.STREAM("cmd:xdpyinfo");
+str=S:readln()
+while str ~= nil
+do
+	str=strutil.trim(str)	
+	toks=strutil.TOKENIZER(str, "\\S")
+	tok=toks:next()
+	if tok=="dimensions:"
+	then 
+		dim=toks:next()
+	end
+	str=S:readln()
+end
+S:close()
+
+return dim
+end
+
 
 
 function ProcessLogInit()
@@ -1378,85 +1687,7 @@ end
 
 return log
 end
-
-
-
-
-
-
-function GetScreenResolution()
-local S
-local dim=""
-
-S=stream.STREAM("cmd:xdpyinfo");
-str=S:readln()
-while str ~= nil
-do
-	str=strutil.trim(str)	
-	toks=strutil.TOKENIZER(str, "\\S")
-	tok=toks:next()
-	if tok=="dimensions:"
-	then 
-		dim=toks:next()
-	end
-	str=S:readln()
-end
-S:close()
-
-return dim
-end
-
-
-
-function CopyChoicesToConfig(config, choices)
-local name, value
-
-if choices == nil then return nil end
-for name,value in pairs(choices)
-do
-	if value ~= nil
-	then
-		if name == "output path" then config["output_path"] = value
-		elseif name == "follow mouse" then config["follow_mouse"] = value
-		else config[name]=value
-		end
-	end
-end
-
-return config
-end
-
-
-function SetupDialog(config, devices)
-local str, S, toks, tok, device
-
-form=dialogs:form("setup screen recording")
-
-str="none"
-for i,device in ipairs(devices)
-do
-	str=str .. "|" .. device.type .. ":" .. device.num..":"..device.name
-	if device.channels==1
-	then
-		str=str..":mono"
-	else
-		str=str..":stereo"
-	end
-end
-
-form:addchoice("audio", str, "(select audio input or 'none')")
-form:addchoice("fps", "1|2|5|10|15|25|30|45|60", "(video frames per second)", config.fps)
-form:addchoice("size", GetScreenResolution().."|1024x768|800x600|640x480|no video", "(area of screen to capture)", config.size)
-form:addchoice("codec", codecs:list(), "(codec)", config.codec)
-form:addchoice("follow mouse", "no|edge|centered", "(capture region moves with mouse)")
-form:addboolean("show capture region", "(draw outline of capture region on screen)")
-form:addboolean("noise reduction", "(if audio, apply noise filters)")
-form:addentry("countdown", "(seconds of gracetime before recording)")
-
-return CopyChoicesToConfig(config, form:run())
-end
-
-
+-- display a countdown before starting recording, if the use requested that
 
 function DoCountdown(count)
 local i, str, S, perc
@@ -1473,9 +1704,66 @@ end
 dialog:close()
 end
 
+-- Display the dialog that asks for all the recording settings
+
+function RecordDialogCopyChoicesToConfig(config, choices)
+local name, value
+
+if choices == nil then return nil end
+for name,value in pairs(choices)
+do
+	if value ~= nil
+	then
+		name=string.gsub(name, ' ', '_')
+		config[name]=value
+	end
+end
+
+return config
+end
 
 
-function AudioRecordDialog(record_config)
+function RecordDialogSetup(config, devices)
+local str, S, toks, tok, device
+
+form=dialogs:form("setup screen recording")
+
+form:addchoice("audio", sound:list(), "(select audio input or 'none')", sound:get_formatted(config.audio))
+form:addchoice("fps", "1|2|5|10|15|25|30|45|60", "(video frames per second)", config.fps)
+form:addchoice("size", GetScreenResolution().."|1024x768|800x600|640x480|no video", "(area of screen to capture)", config.size)
+form:addchoice("codec", codecs:list(), "(codec)", codecs:get_title(config.codec))
+form:addchoice("follow mouse", "no|edge|centered", "(capture region moves with mouse)")
+form:addboolean("hide pointer", "(don't show mouse pointer on screen)", config.hide_pointer)
+form:addboolean("show capture region", "(draw outline of capture region on screen)", config.show_region)
+form:addboolean("noise reduction", "(if audio, apply noise filters)", config.noise_reduction)
+form:addentry("countdown", "(seconds of gracetime before recording)")
+
+return RecordDialogCopyChoicesToConfig(config, form:run())
+end
+
+
+-- this dialog displays when recording is taking place
+
+function RecordingActiveCommandLine(text)
+local gui={}
+
+io.stderr:write(text)
+
+
+gui.add_level=function(self, level, text)
+local str
+str=strutil.trim(text)
+io.stderr:write("\r"..str.." ")
+end
+
+gui.close=function(self)
+end
+
+return gui
+end
+
+
+function RecordingActiveDialog(record_config)
 local dialog={}
 local str, title
 
@@ -1486,17 +1774,18 @@ str=str.."video size: "..record_config.size
 
 if dialogs.driver=="text"
 then
-				title="Press any key to end recording"
+	title="Press any key to end recording"
 else
-				title="Close this window to end recording"
+	title="Close this window to end recording"
 end
 
 dialog=dialogs:progress(title, str, 600, 200)
 dialog.start_time=time.secs()
 dialog.output_path=record_config.output_path
-dialog.add_level=dialog.add
 
-dialog.add=function(self, str)
+
+-- ADD LEVEL function converts dB to a percent value for progressbars
+dialog.add_level=function(self, str)
 local toks, tok
 local dB=0
 
@@ -1512,7 +1801,7 @@ str="start: "..time.formatsecs("%H:%M:%S", self.start_time)
 str=str.."    duration: ".. time.formatsecs("%H:%M:%S", time.secs() - self.start_time)
 str=str.."    filesize: " .. strutil.toMetric(filesys.size(self.output_path)) .. "b \n"
  
-self:add_level(100 + dB, str)
+self:add(100 + dB, str)
 
 end
 
@@ -1520,7 +1809,94 @@ return(dialog)
 end
 
 
+--setup command line for ffmpeg process
 
+
+
+function FFMPEGBuildAudioConfig(config)
+local dev, str
+local audio=""
+local audio_filter=""
+
+	dev=sound:get(config.audio)
+	if dev ~= nil 
+	then
+
+	if dev.type == "alsa"
+	then
+		if tonumber(dev.num) > -1
+		then
+		audio="-f " .. dev.type .. " -thread_queue_size 1024 -ac ".. dev.channels .. " -i hw:" .. dev.num.." "
+		else
+		audio="-f " .. dev.type .. " -thread_queue_size 1024 -ac ".. dev.channels .. " -i " .. dev.name.." "
+		end
+		
+	elseif dev.type == "oss"
+	then
+		audio="-f " .. dev.type .. " -thread_queue_size 1024 -ac ".. dev.channels .. " -i " .. dev.name.." "
+	elseif dev.type == "pulseaudio"
+	then
+		audio="-f pulse -thread_queue_size 1024 -ac ".. dev.channels .." -i default "
+	end
+
+
+	audio_filter=audio_filter .. " -filter_complex ebur128"
+	if config["noise reduction"] == true then audio_filter=audio_filter .. ",highpass=f=200,lowpass=f=3000" end
+	audio_filter=audio_filter .. " "
+	end
+	
+	return audio, audio_filter
+end
+
+
+function FFMPEGBuildCommandLine(config)
+
+local codec, str, Xdisplay
+local show_region=""
+local show_pointer=""
+local follow_mouse=""
+local audio=""
+local audio_filter=""
+
+if config["show_capture_region"] == true then show_region="-show_region 1" end
+if config["hide_pointer"] == true then show_pointer="-draw_mouse 0" end
+if config["follow_mouse"] == "edge" then follow_mouse="-follow_mouse 20"
+elseif config["follow_mouse"] == "centered" then follow_mouse="-follow_mouse centered" 
+end
+
+
+if config.audio ~= "none"
+then 
+audio,audio_filter=FFMPEGBuildAudioConfig(config) 
+end
+
+codec=codecs:get_args(config.codec)
+
+config.output_path = config.output_path .. codec.extn
+
+if config["size"]=="no video" or codec.video==false
+then
+	--Audio only
+	str="ffmpeg -nostats " .. audio .. audio_filter .. codec.cmdline .. config.output_path
+else
+	--Audio and Video (Default)
+
+        Xdisplay=process.getenv("DISPLAY")
+
+	str="ffmpeg -nostats  -f x11grab "  
+	if strutil.strlen(config["size"]) > 0 then str=str .. "-s " .. config["size"] .. " " end
+	str=str .. "-r " .. config["fps"] .. " "
+	str=str .. show_region  .. " "
+	str=str .. follow_mouse .. " "
+	str=str .. show_pointer .. " "
+	str=str .. " -i " .. Xdisplay .. " " --order of arguments matters, this must be at end of 'screen' options
+	str=str .. audio .. audio_filter .. codec.cmdline .. config.output_path
+end
+
+io.stderr:write(str.."\n")
+
+return str
+end
 
 
 function BuildAudioConfig(config)
@@ -1566,9 +1942,39 @@ local audio_filter=""
 end
 
 
+
 -- handle any output/messages that come out of the recording command
 -- or the associated gui
-function DoRecordProcessFeedback(poll, cmdS, gui, log)
+function DoRecordProcessFeedback(S, cmdS, gui, log)
+local str
+
+	if S == cmdS 
+	then
+		str=cmdS:readln()
+
+		if str==nil 
+		then
+			return(false)
+		else
+			str=strutil.trim(str)
+			-- this output can be used to get an 'audio level' for a vu meter
+			if string.sub(str, 1, 15)=="[Parsed_ebur128" then gui:add_level(str)
+			else log:add(str)
+			end
+		end
+	elseif gui.S ~= nil and S == gui.S
+	then
+		str=gui.S:readln()
+		-- anything from the gui window means the window has been closed
+		return(false)
+	end
+
+return(true)
+end
+
+
+
+function DoRecordLoop(poll, cmdS, gui, log)
 local S, str
 
 while true
@@ -1581,76 +1987,63 @@ do
 	process.childExited()
 	end
 
-	if S ~= nil
-	then
-	if S == cmdS 
-	then
-		str=cmdS:readln()
+	if S ~= nil 
+	then 
+		if DoRecordProcessFeedback(S, cmdS, gui, log) == false then break end
+	else
+		gui:add_level("")	
+	end
 
-		if str==nil 
-		then
-			gui:close()
-			log:display()
-			break
-		else
-			str=strutil.trim(str)
-			-- this output can be used to get an 'audio level' for a vu meter
-			if string.sub(str, 1, 15)=="[Parsed_ebur128" then gui:add(str)
-			else log:add(str)
-			end
-		end
-	elseif gui.S ~= nil and S == gui.S
-	then
-		str=gui.S:readln()
-		-- anything from the gui window means the window has been closed
-		break
-	end
-	end
+	--did we get any signals that tell us to stop?
+	if process.sigcheck(process.SIGINT) then break end
+	if process.sigcheck(process.SIGTERM) then break end
 end
 
+gui:close()
+log:display()
+
+end
+
+
+function CommandLineRecordingGui()
+gui={}
+
+gui.add=function(self, text)
+print(text)
+end
+
+gui.close=function(self)
+end
+
+return gui
 end
 
 
 function DoRecord(config)
-local audio=""
-local audio_filter=""
-local show_pointer=""
-local show_region=""
-local follow_mouse=""
-local audio=""
-local audio_filter=""
-local cmdS, S, poll, dialog, str, Xdisplay, codec
-local gui
+local cmdS, S, poll, dialog, str
+local gui, log
 
-Xdisplay=process.getenv("DISPLAY") .. " "
-if config.audio ~= "none"
-then 
-audio,audio_filter=BuildAudioConfig(config) 
+
+--watch for signals that tell us to stop recording
+process.sigwatch(process.SIGINT)
+process.sigwatch(process.SIGTERM)
+
+--[[
+if config.no_dialog == false then gui=RecordingActiveDialog(config)
+else gui=CommandLineRecordingGui()
 end
+]]--
 
-if config["show capture region"] == true then show_region="-show_region 1 " end
---if config["show pointer"] == false then show_pointer="-draw_mouse 0 " end
-
-if config["follow_mouse"] == "edge" then follow_mouse="-follow_mouse 20 "
-elseif config["follow_mouse"] == "centered" then follow_mouse="-follow_mouse centered " 
-end
-
-
-codec=codecs:get(config.codec)
-
-config.output_path = config.output_path .. codec.extn
-if config["size"]=="no video" or codec.video==false
-then
-	--Audio only
-	str="ffmpeg -nostats " .. audio .. audio_filter .. codec.cmdline .. config.output_path
-else
-	--Audio and Video (Default)
-	str="ffmpeg -nostats -s " .. config["size"] .. " -r " .. config["fps"] .. " ".. show_pointer.. show_region .. follow_mouse .. " -f x11grab " .. " -i " .. Xdisplay .. audio .. audio_filter .. codec.cmdline .. config.output_path
-end
-
-gui=AudioRecordDialog(config)
 filesys.mkdirPath(config.output_path)
+str=FFMPEGBuildCommandLine(config)
 cmdS=stream.STREAM("cmd:" .. str, "rw +stderr noshell newpgroup")
+
+if cmdS ~= nil
+then
+-- only create gui after launching ffmpeg, as FFMPEGBuildCommandLine changes some things in config
+-- and also why launch gui if cmdS is null?
+gui=RecordingActiveDialog(config)
+
 poll=stream.POLL_IO()
 poll:add(gui.S)
 poll:add(cmdS)
@@ -1658,10 +2051,9 @@ poll:add(cmdS)
 log=ProcessLogInit()
 time.usleep(30)
 
-DoRecordProcessFeedback(poll, cmdS, gui, log)
+DoRecordLoop(poll, cmdS, gui, log)
 
 process.kill(0 - tonumber(cmdS:getvalue("PeerPID")))
-cmdS:close()
 
 if gui.term ~= nil
 then
@@ -1669,25 +2061,28 @@ gui.term:reset()
 gui.term:clear()
 end
 
+cmdS:close()
+else
+io.stderr:write("ERROR: Failed to launch ffmpeg")
+end
 
 end
 
 
 
-config=InitConfig()
+codecs=CodecsInit()
+sound=SoundInit()
+config=InitConfig(codecs:get_default())
 
 dialogs=NewDialog(config.driver)
 
-codecs=CodecsInit()
 if codecs==nil
 then
 dialogs.info("Can't initialize ffmpeg. Is it installed?", "FFMPEG ERROR")
 os.exit(1)
 end
 
-devices=GetSoundDevices()
-
-config=SetupDialog(config, devices)
+if config.no_dialog == false then config=RecordDialogSetup(config) end
 
 
 if config ~= nil

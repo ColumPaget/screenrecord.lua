@@ -1,3 +1,5 @@
+VERSION=2.0
+
 function tobool(str)
 
 str=string.lower(strutil.trim(str))

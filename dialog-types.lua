@@ -906,7 +906,7 @@ if strutil.strlen(text) > 0 then self.term:puts(text.."~>") end
 
 self.term:move(2,9)
 
-perc=math.floor(val * 100 / progress.max)
+perc=math.floor(val * 100 / self.max)
 
 str=""
 for i=0,perc,1 do str=str.."*" end
@@ -960,6 +960,80 @@ end
 
 
 
+function CLIInfoDialog(text)
+io.stderr:write(text.."\n")
+end
+
+function CLIProgressDialog(dialogs, title, text)
+local dialog={}
+
+if strutil.strlen(text) > 0 then io.stderr:write(text.."\n") end
+
+dialog.max=100
+
+
+dialog.set_max=function(self, val)
+self.max=val
+end
+
+--update progress bar to position 'val' with underlying text 'text'
+dialog.add=function(self, val, text)
+local perc, i, str
+
+perc=math.floor(val * 100 / self.max)
+str=string.format("%d%%  ", perc)
+if strutil.strlen(text) > 0 then str=str .. strutil.trim(text) end
+io.stderr:write("\r" .. str .. "  ")
+end
+
+
+--very generic 'close' function
+dialog.close=function(self)
+end
+
+
+return dialog
+end
+
+
+function CLILogDialog(dialogs, text)
+local dialog={}
+
+dialog.add=function(self, text)
+io.stderr:write(text.."\n")
+end
+
+dialog.close=function(self)
+end
+
+return dialog
+end
+
+
+
+function CLIObjectCreate()
+local dialogs={}
+
+dialogs.stdio=stream.STREAM("-")
+dialogs.info=CLIInfoDialog
+dialogs.log=CLILogDialog
+dialogs.progress=CLIProgressDialog
+
+--[[ not implemented for Command Line Interface
+dialogs.yesno=TextConsoleYesNoDialog
+dialogs.entry=TextConsoleTextEntryDialog
+dialogs.fileselect=TextConsoleFileSelectionDialog
+dialogs.calendar=TextConsoleCalendarDialog
+dialogs.menu=TextConsoleMenuDialog
+dialogs.form=TextConsoleFormObjectCreate
+]]--
+
+return dialogs
+end
+
+
+
+
 function DialogSelectDriver()
 
 if strutil.strlen(filesys.find("zenity", process.getenv("PATH"))) > 0 then return "zenity" end
@@ -987,13 +1061,16 @@ then
 elseif driver == "yad"
 then
 	dialog=YadObjectCreate()
+elseif driver == "cli"
+then
+	dialog=CLIObjectCreate()
 else
 	dialog=TextConsoleObjectCreate(dialog)
 end
 
 dialog.driver=driver
 
--- these are generic functions that are added to dialogss when
+-- these are generic functions that are added to dialogs when
 -- they are created. 'setmax' is only added to progress dialogss
 -- 'close' is added to all dialogs types
 dialog.generic_close=function(self)
